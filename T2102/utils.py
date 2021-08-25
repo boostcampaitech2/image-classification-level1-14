@@ -106,7 +106,6 @@ def get_bal_labels_and_bal_img_paths(size):
         true_l_and_p = get_all_labels_and_img_paths(all_masks)
         false_l_and_p = get_all_labels_and_img_paths(not_masks)
     elif size.isdigit():
-        size = int(size)
         true_l_and_p = get_mini_labels_mini_img_paths(all_masks, size )
         false_l_and_p = get_mini_labels_mini_img_paths(not_masks, size )
     else:
@@ -167,11 +166,16 @@ def create_img_paths(mask_list, img_dir, p_dir):
 
 
 
-def split_eval(dataset):
+def split_eval(dataset, balance_testset = False):
     """
         return dataset, testset
     """
-    return torch.utils.data.random_split(dataset, [ len(dataset) - 100, 100 ], generator=torch.Generator().manual_seed(42))
+
+    validate_num = len(dataset) // 10
+    if balance_testset:
+        validate_num = validate_num // 2
+
+    return torch.utils.data.random_split(dataset, [ len(dataset) - validate_num, validate_num ], generator=torch.Generator().manual_seed(42))
 
 
 

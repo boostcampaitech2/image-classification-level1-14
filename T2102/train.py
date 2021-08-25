@@ -44,7 +44,7 @@ with open('config.cfg', 'w') as configfile:
 
 
 import utils
-from dataset import MaskDataset
+from dataset import MaskDataset, MaskBaseDataset
 from utils import num_classes
 from tqdm import tqdm
 import torch
@@ -57,19 +57,36 @@ train_data= test_data = None
 if not BALANCE_TESTSET:
     labels, img_paths = utils.get_labels_and_img_paths(DATASET_SIZE)
 
-    dataset = MaskDataset(img_paths, labels)
-    train_data, test_data = utils.split_eval(dataset)
-else:
-    (false_labels, false_img_paths), (true_labels, true_img_paths) = utils.get_bal_labels_and_bal_img_paths(DATASET_SIZE)
+    data = MaskDataset(img_paths, labels)
 
-    false_dataset = MaskDataset(false_img_paths, false_labels)
-    true_dataset = MaskDataset(true_img_paths, true_labels)
+    # data = MaskBaseDataset('/opt/ml/input/data/train/images')
 
-    false_train_data, false_test_data = utils.split_eval(false_dataset)
-    true_train_data, true_test_data = utils.split_eval(true_dataset)
 
-    train_data = torch.utils.data.ConcatDataset([false_train_data, true_train_data])
-    test_data = torch.utils.data.ConcatDataset([false_test_data, true_test_data])
+    train_data, test_data = utils.split_eval(data)
+    print("train data : %d test_data : %d" %(len(train_data), len(test_data)))
+# else:
+#     (true_labels, true_img_paths), (false_labels, false_img_paths) = utils.get_bal_labels_and_bal_img_paths(DATASET_SIZE)
+
+#     false_dataset = MaskDataset(false_img_paths, false_labels)
+#     true_dataset = MaskDataset(true_img_paths, true_labels)
+
+#     false_train_data, false_test_data = utils.split_eval(false_dataset)
+#     true_train_data, true_test_data = utils.split_eval(true_dataset)
+
+#     train_data = torch.utils.data.ConcatDataset([false_train_data, true_train_data])
+#     test_data = torch.utils.data.ConcatDataset([false_test_data, true_test_data])
+#     print("train data : %d test_data : %d" %(len(train_data), len(test_data)))
+
+#     # false = [i for i in range(6,18)]
+#     # count_f = 0
+#     # count_t = 0
+
+#     # for t in test_data:
+#     #     if t[1] in false:
+#     #         count_f +=1
+#     #     else:
+#     #         count_t +=1 
+#     # print(count_t, count_f)
 
 dataloader = DataLoader(train_data, shuffle = True, batch_size = BATCH_SIZE)
 num_dataset = len(train_data)
@@ -144,9 +161,9 @@ def train():
 
                 train_f1_score = mini_batch_f1_score
 
-                writer.add_scalar('training loss', 
+                writer.add_scalar('loss/training loss', 
                     mini_batch_loss.item(), cur_epoch)
-                writer.add_scalar('training f1', 
+                writer.add_scalar('f1/training f1', 
                     mini_batch_f1_score, cur_epoch)
                 
                 evaluate(testloader, cur_epoch, writer, record = True)
@@ -160,14 +177,16 @@ def train():
 
         print("train loss : %-10.5f test loss = %-10.5f" %(epoch_loss, test_loss))
         print("train acc: %-10.5f test accuracy = %-10.5f" %(train_acc, test_acc))
-        print("train  f1 mirco average: %-10.5f test  f1 mirco average: %-10.5f" %(test_f1_score, train_f1_score))
+        print("train  f1 marco average: %-10.5f test  f1 marco average: %-10.5f" %(test_f1_score, train_f1_score))
 
-    torch.save(model, './models/'+str(EPOCHS)+ "_concat_"+'resnet_18.pt')
+    evaluate(testloader, final = True)
+
+    torch.save(model, './models/'+ex_num_name+'resnet_18.pt')
     print("epoch = %d done!" %(EPOCHS))
     writer.flush()
     writer.close()
 
-def evaluate(testloader, cur_train_epoch = None, writer = None, record = False):
+def evaluate(testloader, cur_train_epoch = None, writer = None, record = False, final = False):
     model.eval()
     num_acc = 0
 
@@ -200,13 +219,17 @@ def evaluate(testloader, cur_train_epoch = None, writer = None, record = False):
     if record == True:
         if writer == None or cur_train_epoch == None:
             raise Exception
-        writer.add_scalar("test loss", test_loss, cur_train_epoch)
-        writer.add_scalar("test acc", test_acc,  cur_train_epoch)
-        writer.add_scalar("test f1 score", test_f1_score,  cur_train_epoch)
+        writer.add_scalar("loss/test loss", test_loss, cur_train_epoch)
+        writer.add_scalar("acc/test acc", test_acc,  cur_train_epoch)
+        writer.add_scalar("f1/test f1 score", test_f1_score,  cur_train_epoch)
 
 
 
     return test_loss, test_acc, test_f1_score
+
+
+
+
 
 if __name__ == "__main__" :
     train()
