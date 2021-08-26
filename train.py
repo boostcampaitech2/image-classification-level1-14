@@ -10,11 +10,7 @@ from PIL import Image
 from tqdm.notebook import tqdm
 from time import time
 from sklearn.model_selection import train_test_split
-
-import matplotlib.pyplot as plt
-import seaborn as sns
-import multiprocessing as mp
-
+import random
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -31,6 +27,7 @@ import re
 import csv
 import timm
 from dataset_fixed import get_transforms, MaskBaseDataset
+from model import model_trained
 
 def main(config_file):
 
@@ -63,15 +60,19 @@ def main(config_file):
     train_dataset.dataset.set_transform(transform(need = 'train'))
     val_dataset.dataset.set_transform(transform(need = "val"))
     
+    image_datasets={'train':train_dataset, 'validation':val_dataset}
+
     #모델을 설정합니다. 
     num_classes = 18
     model = timm.create_model('tf_efficientnetv2_s_in21ft1k', pretrained=True)
+  
+    for param in model.parameters():
+        param.requires_grad = False
+
     model.classifier = nn.Linear(1280,num_classes)
-    model.train()
-    
+
     # 옵티마이저 정의
-    params = [param for param in model.parameters() if param.requires_grad]
-    optimizer = torch.optim.Adam(params, lr=0.001)
+    optimizer = optim.Adam(model.classifier.parameters())
 
     # 손실함수 정의
     loss_fn = nn.CrossEntropyLoss()
