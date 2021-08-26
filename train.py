@@ -1,4 +1,4 @@
-!pip install timm
+-m pip install timm
 
 import os
 import sys
@@ -15,9 +15,6 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader
-import torch.utils.data as data
-
 from torchvision import transforms, models
 from torchvision.transforms import Resize, ToTensor, Normalize
 from sklearn.metrics import f1_score
@@ -26,14 +23,15 @@ import matplotlib.pyplot as plt
 import re
 import csv
 import timm
-from dataset_fixed import get_transforms, MaskBaseDataset
-from model import model_trained
+from dataset import get_transforms, MaskBaseDataset, get_fixed_labeled_csv
+from model import train_model
 
-def main(config_file):
+def train(config_file):
 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     train_dir = '/opt/ml/input/data/train'
 
+    # Random seed 설정
     SEED = 2021
     random.seed(SEED)
     np.random.seed(SEED)
@@ -44,6 +42,7 @@ def main(config_file):
     torch.backends.cudnn.benchmark = True  # type: ignore
 
     # 정의한 Augmentation 함수와 Dataset 클래스 객체를 생성합니다.
+    get_fixed_labeled_csv()
     transform = get_transforms
     image_path = pd.read_csv("labeled_data.csv").img_path
     label = pd.read_csv("labeled_data.csv").label
@@ -61,11 +60,23 @@ def main(config_file):
     val_dataset.dataset.set_transform(transform(need = "val"))
     
     image_datasets={'train':train_dataset, 'validation':val_dataset}
-
+    dataloaders = {
+        'train':
+        data.DataLoader(image_datasets['train'],
+                        batch_size=12,
+                        shuffle=True,
+                        num_workers=4),  # for Kaggle
+        'validation':
+        data.DataLoader(image_datasets['validation'],
+                        batch_size=12,
+                        shuffle=False,
+                        num_workers=4)  # for Kaggle
+    }
     #모델을 설정합니다. 
     num_classes = 18
     model = timm.create_model('tf_efficientnetv2_s_in21ft1k', pretrained=True)
-  
+    
+    
     for param in model.parameters():
         param.requires_grad = False
 
@@ -78,22 +89,54 @@ def main(config_file):
     loss_fn = nn.CrossEntropyLoss()
         
     
-    # 학습을 위한 데이터셋 생성
-    dataset_example = ExampleDataset()
+    model_trained = train_model(model, loss_fn, optimizer, num_epochs=30)
     
-    # 학습을 위한 데이터로더 생성
-    dataloader_example = DataLoader(dataset_example)
-    
-    ##########################################################
-    # 세번째 과제 Transfer Learning & Hyper Parameter Tuning # 
-    ##########################################################
-    for e in range(epochs):
-        for X,y in dataloader_example:
-            output = model(X)
-            loss = loss_fn(output, y)
-            optimizer.zero_grad()
-            loss.backward()
-        optimizer.step()
+    !mkdir models
+    !mkdir models/pytorch
+    torch.save(model_trained, 'models/pytorch/weights.h5')
+
+    # # meta 데이터와 이미지 경로를 불러옵니다.
+    test_dir = '/opt/ml/input/data/eval'
+    submission = pd.read_csv(os.path.join(test_dir, 'info.csv'))
+    test_image_dir = os.path.join(test_dir, 'images')
+
+    # # Test Dataset 클래스 객체를 생성하고 DataLoader를 만듭니다.
+    test_image_paths = [os.path.join(test_image_dir, img_id) for img_id in submission.ImageID]
+
+    def get_test_transforms(img_size=(512, 384), mean=(0.548, 0.504, 0.479), std=(0.237, 0.247, 0.246)):
+        transformations = Compose([
+                    Resize(img_size[0], img_size[1]),
+                    Normalize(mean=mean, std=std, max_pixel_value=255.0, p=1.0),
+                    ToTensorV2(p=1.0),
+                ], p=1.0)
+        return transformations
+   
+    test_transform = get_test_transforms(mean=mean, std=std)
+
+    test_dataset = TestDataset(test_image_paths, test_transform)
+
+    test_loader = data.DataLoader(
+        test_dataset,
+        shuffle=False
+    )
+
+    # 모델을 정의합니다. (학습한 모델이 있다면 torch.load로 모델을 불러주세요!)
+    model = torch.load('models/pytorch/weights.h5')
+    model.eval()
+
+    # 모델이 테스트 데이터셋을 예측하고 결과를 저장합니다.
+    all_predictions = []
+    for images in tqdm(test_loader):
+        with torch.no_grad():
+            images = images.to(device)
+            pred = model(images)
+            pred = pred.argmax(dim=-1)
+            all_predictions.extend(pred.cpu().numpy())
+    submission['ans'] = all_predictions
+
+    # 제출할 파일을 저장합니다.
+    submission.to_csv(os.path.join(test_dir, 'submission.csv'), index=False)
+    print('test inference is done!')
 
 if __name__ == "__main__" :
     train()

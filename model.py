@@ -1,3 +1,8 @@
+import torch.utils.data as data
+from tqdm.notebook import tqdm
+import torch
+
+
 def train_model(model, criterion, optimizer, num_epochs=5):
     for epoch in tqdm(range(num_epochs)):
         epoch_f1 = 0
