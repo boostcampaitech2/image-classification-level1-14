@@ -1,4 +1,8 @@
+# config
+* unfreeze: ratio. e.g. 1/3.  if freeze all, give 0. if unfreeze all, give 1.
+
 # pstage chronicle
+
 
 # 파이프라인: 
 domain understanding -> data mining -> data analysis -> data processing -> modeling -> training -> deploy
@@ -186,10 +190,18 @@ dataset, testset = torch.utils.data.random_split(dataset, [18000,900], generator
 
 length가 시작점부터 몇개까지 할것인지를 결정. 
 
-## 마주한 문제
-현재... f1와 accuracy가 실제 제출해보면 훨씬 형편없다.
 
 ## 문제
 loss을 텐서보드에 기ㅣ록할 때 ... 값이 일관적이지 않다?
 torch의 loss 이해. 
 loss(y_hat, y)가 들어갈 떄 미니배치가 들어간다. 그러면 결과는... 미니배치의 평균 loss가 나온다. 따라서 각 미니배치의 loss을 구할 때 따로 배치 크기로 나눠주지 않아도 된다.
+cross entropy loss는 미니 배치의 평균 값을 내준다. mini batch을 학습하는 경우에 기록할 때 그대로 해주면 된다. 전체 epoch을 기록할떄는 loss sum을 더하다가 1 epoch이 끝나면 데이터셋 크기로 나눠서 평균을 기록.
+
+## 문제 : 현재... f1와 accuracy가 실제 제출해보면 훨씬 형편없다.
+balance testset을 구했다. accuracy는 0.5, f1은 0.4가 나온다. 이 기록을 토대로 제출해보면 accuracy는 0.4, f1은 0.3이 나온다... 이걸 어떻게 해석? f1은 조화평균이다. positive라고 예측한 것에서 틀린 것이 많으면 ... TP/(TP+NP)으로 표현되는 precision에서... 
+accuracy는 TP와 TN이 많으면 점수가 높게 나온다. 틀리면 낮아짐. valiation set이 반반이면... accuracy가 50, 50이니까 반은 맞추고 있다는 소리. 그렇다면 ... 실제 testset에서 만약 반반이 아니라 균형이 더 낮다면... 틀리는 것이 맞을 것이고... 그러면 accuracy가 더 낮게 나올 수 있다. 
+
+f1은? precision이 낮으면 점수가 낮아진다. 즉... 맞다고 했는데 실제 맞는 것이 적으면 점수가 하락한다. FN가 많아도 하락한다... 
+
+## 만약에... testset에 전부 다 negative만 있다면? 
+

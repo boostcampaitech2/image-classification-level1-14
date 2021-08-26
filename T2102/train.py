@@ -1,10 +1,14 @@
-import configparser
-config = configparser.ConfigParser()
-config.read('config.cfg')
 
-if not config.sections():
-    print(config.sections())
-    raise Exception
+import utils
+from dataset import MaskDataset
+from utils import num_classes
+from tqdm import tqdm
+import torch
+import torch.nn as nn
+from torch.utils.data import Dataset, DataLoader
+
+from utils import config
+from utils import num_unfreeze_ratio
 
 
 IS_LOG = config['log']['tensorboard']
@@ -29,11 +33,12 @@ else:
 DATASET_SIZE = config['dataset']['data_size']
 BATCH_SIZE = int(config['dataset']['batch_size'])
 
-EX_NUM = config['trainer']['ex']
-ex_num_name = "ex" + EX_NUM + "_dataset_size_" + str(DATASET_SIZE) + "banace_testset_" + str(BALANCE_TESTSET)
 
 
 EPOCHS = int( config['trainer']['epoch'] )
+
+EX_NUM = config['trainer']['ex']
+ex_num_name = "ex" + EX_NUM +"_num_unfreeze_ratio_"+str(num_unfreeze_ratio)+"_epochs_"+ str(EPOCHS) +"_dataset_size_" + str(DATASET_SIZE) + "_banace_testset_" + str(BALANCE_TESTSET)
 
 config['trainer']['ex'] = str(int(config['trainer']['ex']) + 1)
 with open('config.cfg', 'w') as configfile:
@@ -43,27 +48,17 @@ with open('config.cfg', 'w') as configfile:
 
 
 
-import utils
-from dataset import MaskDataset, MaskBaseDataset
-from utils import num_classes
-from tqdm import tqdm
-import torch
-import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
 
 
 train_data= test_data = None
 
-if not BALANCE_TESTSET:
-    labels, img_paths = utils.get_labels_and_img_paths(DATASET_SIZE)
+# if not BALANCE_TESTSET:
+#     labels, img_paths = utils.get_labels_and_img_paths(DATASET_SIZE)
 
-    data = MaskDataset(img_paths, labels)
+#     data = MaskDataset(img_paths, labels)
 
-    # data = MaskBaseDataset('/opt/ml/input/data/train/images')
-
-
-    train_data, test_data = utils.split_eval(data)
-    print("train data : %d test_data : %d" %(len(train_data), len(test_data)))
+#     train_data, test_data = utils.split_eval(data)
+#     print("train data : %d test_data : %d" %(len(train_data), len(test_data)))
 # else:
 #     (true_labels, true_img_paths), (false_labels, false_img_paths) = utils.get_bal_labels_and_bal_img_paths(DATASET_SIZE)
 
@@ -77,21 +72,52 @@ if not BALANCE_TESTSET:
 #     test_data = torch.utils.data.ConcatDataset([false_test_data, true_test_data])
 #     print("train data : %d test_data : %d" %(len(train_data), len(test_data)))
 
-#     # false = [i for i in range(6,18)]
-#     # count_f = 0
-#     # count_t = 0
+#     false = [i for i in range(6,18)]
+#     count_f = 0
+#     count_t = 0
 
-#     # for t in test_data:
-#     #     if t[1] in false:
-#     #         count_f +=1
-#     #     else:
-#     #         count_t +=1 
-#     # print(count_t, count_f)
+#     for t in test_data:
+#         if t[1] in false:
+#             count_f +=1
+#         else:
+#             count_t +=1 
+#     print("testdata balance stat\nmask data: %dn normal and incorrect data %d" %(count_t, count_f))
+#     if count_t != count_f:
+#         print("The test dataset is not balance. This may be woring. Proceed?")
+#         while True:
+#             ans = input("type yes: ")
+#             if ans == "yes":
+#                 break
+
+####################################################################################################
+from utils import img_dir
+
+from basedataset import get_transforms, MaskBaseDataset,mean, std
+import torch.utils.data as data
+
+# 정의한 Augmentation 함수와 Dataset 클래스 객체를 생성합니다.
+transform = get_transforms(mean=mean, std=std)
+
+dataset = MaskBaseDataset(
+    img_dir=img_dir
+)
+
+# train dataset과 validation dataset을 8:2 비율로 나눕니다.
+n_val = int(len(dataset) * 0.2)
+n_train = len(dataset) - n_val
+train_data, test_data = data.random_split(dataset, [n_train, n_val])
+
+# 각 dataset에 augmentation 함수를 설정합니다.
+train_data.dataset.set_transform(transform['train'])
+test_data.dataset.set_transform(transform['val'])
+
+####################################################################################################
 
 dataloader = DataLoader(train_data, shuffle = True, batch_size = BATCH_SIZE)
 num_dataset = len(train_data)
 testloader = DataLoader(test_data, shuffle = True, batch_size = BATCH_SIZE)
 num_testset = len(test_data)
+
 
 
 from model import MaskModel
@@ -132,11 +158,12 @@ def train():
 
     for e in range(EPOCHS):
         print("\nepoch number :", e)
-        running_acc = 0
+        running_acc_sum = 0
         loss_sum = 0
         train_f1_score_sum = 0
 
         for idx, (batch_in, batch_out) in enumerate(tqdm(dataloader)):
+            model.train()
             X = batch_in.to(device)
             Y = batch_out.to(device)
             
@@ -147,39 +174,50 @@ def train():
             opt.zero_grad()
             mini_batch_loss.backward()
             opt.step()
-            loss_sum += mini_batch_loss.item() # CrossEntLoss returns ave loss of mini batch
             
-            running_acc += torch.sum(preds == Y.data).item()
 
+            mini_batch_acc = torch.sum(preds == Y.data).item() / BATCH_SIZE
             mini_batch_f1_score = f1_score(Y.cpu().detach().numpy().tolist(), preds.cpu().detach().numpy().tolist(), average = 'macro')
 
+            loss_sum += mini_batch_loss.item() # CrossEntLoss returns ave loss of mini batch
+            running_acc_sum += mini_batch_acc
             train_f1_score_sum += mini_batch_f1_score
 
-            if IS_LOG and idx % 1000 == 9:
+            # if IS_LOG and idx % 1000 == 99:
                 
-                cur_epoch = e * num_dataset + idx
+            #     cur_epoch = e * num_dataset + idx
 
-                train_f1_score = mini_batch_f1_score
+            #     train_f1_score = mini_batch_f1_score
 
-                writer.add_scalar('loss/training loss', 
-                    mini_batch_loss.item(), cur_epoch)
-                writer.add_scalar('f1/training f1', 
-                    mini_batch_f1_score, cur_epoch)
+            #     writer.add_scalar('loss/training loss', 
+            #         mini_batch_loss.item(), cur_epoch)
+            #     writer.add_scalar('f1/training f1', 
+            #         mini_batch_f1_score, cur_epoch)
+            #     writer.add_scalar('acc/training acc', 
+            #         mini_batch_acc, cur_epoch)
                 
-                evaluate(testloader, cur_epoch, writer, record = True)
+            #     evaluate(testloader, cur_epoch, writer, record = True)
 
             
         epoch_loss = loss_sum / num_of_batches
         train_f1_score = train_f1_score_sum / num_of_batches
-        train_acc = running_acc/ num_dataset
+        train_acc = running_acc_sum/ num_of_batches
 
-        test_loss, test_acc, test_f1_score = evaluate(testloader)
+        test_loss, test_acc, test_f1_score = evaluate(testloader,num_dataset * (e+1), writer, record = IS_LOG)
 
         print("train loss : %-10.5f test loss = %-10.5f" %(epoch_loss, test_loss))
         print("train acc: %-10.5f test accuracy = %-10.5f" %(train_acc, test_acc))
         print("train  f1 marco average: %-10.5f test  f1 marco average: %-10.5f" %(test_f1_score, train_f1_score))
 
-    evaluate(testloader, final = True)
+
+        if IS_LOG:
+            writer.add_scalar('loss/training loss', 
+                epoch_loss, num_dataset * (e+1))
+            writer.add_scalar('f1/training f1', 
+                train_f1_score, num_dataset * (e+1))
+            writer.add_scalar('acc/training acc', 
+                train_acc, num_dataset * (e+1))
+
 
     torch.save(model, './models/'+ex_num_name+'resnet_18.pt')
     print("epoch = %d done!" %(EPOCHS))

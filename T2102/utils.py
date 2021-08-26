@@ -4,8 +4,16 @@ import torch.utils.data
 
 import configparser
 
+config = configparser.ConfigParser()
+config.read('config.cfg')
+if not config.sections():
+    raise Exception('config file is missing')
+
 num_classes = 18
-epochs = 3
+
+num_unfreeze_ratio = int( config['trainer']['unfreeze'].split('/')[-1] )
+if num_unfreeze_ratio == 0:
+    num_unfreeze_ratio = float('inf')
 
 
 img_dir = '/opt/ml/input/data/train/images'
@@ -65,10 +73,7 @@ def create_classes(dict):
                 return 17
 
 def get_labels_and_img_paths(size):
-    config = configparser.ConfigParser()
-    config.read('config.cfg')
-    if not config.sections():
-        raise Exception('config file is missing')
+
 
     mask_list = create_mask_list()
 
@@ -186,5 +191,3 @@ def split_eval(dataset, balance_testset = False):
 
 
 
-
-# def balance_testset():
