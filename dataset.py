@@ -11,6 +11,7 @@ from torch.utils.data import Dataset, Subset, random_split
 from torchvision import transforms
 from torchvision.transforms import *
 from pathlib import Path
+from albumentations import *
 
 IMG_EXTENSIONS = [
     ".jpg", ".JPG", ".jpeg", ".JPEG", ".png",
@@ -54,7 +55,7 @@ class AddGaussianNoise(object):
 class CustomAugmentation:
     def __init__(self, resize, mean, std, **args):
         self.transform = transforms.Compose([
-            CenterCrop((320, 256)),
+            RandomBrightnessContrast(brightness_limit=(-0.3, 0.3), contrast_limit=(-0.3, 0.3), p=1.0),
             Resize(resize, Image.BILINEAR),
             ColorJitter(0.1, 0.1, 0.1, 0.1),
             ToTensor(),
@@ -315,7 +316,7 @@ class TestDataset(Dataset):
         return len(self.img_paths)
 
 def get_fixed_labeled_csv(): 
-    df = pd.read_csv(f"{train_dir}/train.csv")
+    df = pd.read_csv("/opt/ml/input/data/train/train.csv")
 
     id_overlap_error = ["003397"]
     gender_labeling_error = ['006359', '006360', '006361', '006362', '006363', '006364']
@@ -342,7 +343,7 @@ def get_fixed_labeled_csv():
             else:
                 _gender = 'male'
         
-        for img_name in Path(f"{image_dir}/{_path}").iterdir():  # 각 dir의 이미지들을 iterative 하게 가져옵니다.
+        for img_name in Path("/opt/ml/input/data/train/images/{_path}").iterdir():  # 각 dir의 이미지들을 iterative 하게 가져옵니다.
             img_stem = img_name.stem  # 해당 파일의 파일명만을 가져옵니다. 확장자 제외.
             if not img_stem.startswith('._'):  # avoid hidden files
                 if _id in mask_labeling_error:
