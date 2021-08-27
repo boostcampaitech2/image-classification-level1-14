@@ -1,4 +1,4 @@
--m pip install timm
+!pip install timm
 
 import os
 import sys
@@ -15,6 +15,9 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
+from torch.utils.data import Dataset, DataLoader
+import torch.utils.data as data
+
 from torchvision import transforms, models
 from torchvision.transforms import Resize, ToTensor, Normalize
 from sklearn.metrics import f1_score
