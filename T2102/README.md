@@ -204,4 +204,54 @@ accuracy는 TP와 TN이 많으면 점수가 높게 나온다. 틀리면 낮아�
 f1은? precision이 낮으면 점수가 낮아진다. 즉... 맞다고 했는데 실제 맞는 것이 적으면 점수가 하락한다. FN가 많아도 하락한다... 
 
 ## 만약에... testset에 전부 다 negative만 있다면? 
+모두 imbalance한 상태에서는? 사실 예측의 차이는 별로 없다. 단지... validation의 예측에 대해서 ociliation이 크다는 것뿐? f1 score는... 맞다고 한 것
 
+## train 점수가 test 점수 보다 낮다?
+내가 데이터셋을 잘못생성했는가 해서 base 코드로 해봐도 동일하다. 아직 epoch 수를 3 정도로만 해봐서 그런가? 30으로 시도 해봄... 결과 기다리는 중...
+
+
+## pretrained unfrozen
+config에 unfrozen을 쉽게 조정하기 위해서 추가 함.
+
+```
+for layer in model.named_modules()
+    if isinstance(layer, nn.Sequential):
+        ...count
+
+how_many = ...
+index = ...
+for layer in model.named_modules()
+    if isinstance(layer, nn.Sequential):
+        if index > howmany
+            break
+        for params in layer.paremeters()
+            params.requires_grad = False
+    index += 1
+```
+        
+## vallidation set에 incorrect와 normal, 그리고 마스크의 비율을 동일하게 하려고 했는데
+그래도 사실 별 차이가 없었다. 내가 생각한 방향: incorrect와 normal이 incorrect하다. 그래서 이 incorrect 한 데이터와 mask데이터의 크기를 동일하게 하려고 했음. 그런데 이 생각의 문제점은... class가 18개라는 것이다. 이 생각은 2개로만 분류한다. 2개로 분류되어도 2개 안에서도 각각 9가지이ㅢ class가 존재한다. 그래서 이렇게 하나 안하다 동일하게 예측률이 차이가 없었던 것.
+
+## 문제
+메트릭을 신뢰하지 못하겠다. 여기서 90이 나와도 제출하면 3이 나온다... 어휴 그리고 막 튄다... 신뢰가 불가능. accuracy도 마찬가지이다. validatin에서 계속 높게 나옴. requires_grad = false으로 해서 과적합도 해결했는데도... 여전히... 
+
+주피터노트북에서 실험. 가설: 내가 코드를 잘못짰다??? 들어가는 값들이 들어가야 하는 값들과 다르다???
+
+값들을 비교해보자. 메트릭은 맞는건가?
+
+accuracy 먼저 해보자. 이게 잘 맞다면... testset에서도 3이 나와야 하는데... 아구...
+
+지금 하려고 하는 것.
+1. 그림을 그려본다.
+2. dataframe으로 tf을 보여주는 표를 만들어보자. 그리고 공식에 넣어서 실제 수치가 맞는지 확인해보자. 그러면 일단 함수는 잘 사용하고 있는 것이다. 
+3. 그리고 resnet 50을 사용해보자.
+4. 다른 모델들도 사용해보자. 
+
+가설: 내 코드가 맞다면... data imbalance으로 인한... overfitting일 것이다. random으로 split하지만... 한번 split한 데이터로 계속 학습하면 그 데이터만 가짐. k fold을 사용해보자. 
+
+그리고 evaluate을 할때 맞는지 틀리는지... 각 label에 대해서 확인해보기. 
+
+내가 원하는 것: 이 validation set에서 각 레이블이 몇개가 있고, 각 레이블을 얼마나 잘 맞추는지 확인하고 싶다. 각 레이블 마다 몇퍼센트를 맞췄는지 만들어보자. 
+
+## gpu util 1s update
+watch -n 0.5 nvidia-smi

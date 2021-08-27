@@ -9,6 +9,8 @@ from torch.utils.data import Dataset, DataLoader
 
 from utils import config
 from utils import num_unfreeze_ratio
+# torch.manual_seed(42)
+# torch.cuda.empty_cache()
 
 
 IS_LOG = config['log']['tensorboard']
@@ -48,70 +50,79 @@ with open('config.cfg', 'w') as configfile:
 
 
 
-
+from utils import BASE_DATASET
 
 train_data= test_data = None
+if BASE_DATASET:
+####################################################################################################
+    from utils import img_dir
 
-# if not BALANCE_TESTSET:
-#     labels, img_paths = utils.get_labels_and_img_paths(DATASET_SIZE)
+    from basedataset import get_transforms, MaskBaseDataset,mean, std
+    import torch.utils.data as data
 
-#     data = MaskDataset(img_paths, labels)
 
-#     train_data, test_data = utils.split_eval(data)
-#     print("train data : %d test_data : %d" %(len(train_data), len(test_data)))
-# else:
-#     (true_labels, true_img_paths), (false_labels, false_img_paths) = utils.get_bal_labels_and_bal_img_paths(DATASET_SIZE)
+    # 정의한 Augmentation 함수와 Dataset 클래스 객체를 생성합니다.
+    # transform = get_transforms(mean=mean, std=std)
 
-#     false_dataset = MaskDataset(false_img_paths, false_labels)
-#     true_dataset = MaskDataset(true_img_paths, true_labels)
+    dataset = MaskBaseDataset(
+        img_dir=img_dir
+    )
 
-#     false_train_data, false_test_data = utils.split_eval(false_dataset)
-#     true_train_data, true_test_data = utils.split_eval(true_dataset)
+    # train dataset과 validation dataset을 8:2 비율로 나눕니다.
+    n_val = int(len(dataset) * 0.2)
+    n_train = len(dataset) - n_val
+    train_data, test_data = data.random_split(dataset, [n_train, n_val])
 
-#     train_data = torch.utils.data.ConcatDataset([false_train_data, true_train_data])
-#     test_data = torch.utils.data.ConcatDataset([false_test_data, true_test_data])
-#     print("train data : %d test_data : %d" %(len(train_data), len(test_data)))
-
-#     false = [i for i in range(6,18)]
-#     count_f = 0
-#     count_t = 0
-
-#     for t in test_data:
-#         if t[1] in false:
-#             count_f +=1
-#         else:
-#             count_t +=1 
-#     print("testdata balance stat\nmask data: %dn normal and incorrect data %d" %(count_t, count_f))
-#     if count_t != count_f:
-#         print("The test dataset is not balance. This may be woring. Proceed?")
-#         while True:
-#             ans = input("type yes: ")
-#             if ans == "yes":
-#                 break
+    # 각 dataset에 augmentation 함수를 설정합니다.
+    # train_data.dataset.set_transform(transform['train'])
+    # test_data.dataset.set_transform(transform['val'])
+    ex_num_name += "_base_dataset"
 
 ####################################################################################################
-from utils import img_dir
+else:
+    if not BALANCE_TESTSET:
+        labels, img_paths = utils.get_labels_and_img_paths(DATASET_SIZE)
 
-from basedataset import get_transforms, MaskBaseDataset,mean, std
-import torch.utils.data as data
+        data = MaskDataset(img_paths, labels)
 
-# 정의한 Augmentation 함수와 Dataset 클래스 객체를 생성합니다.
-transform = get_transforms(mean=mean, std=std)
+        train_data, test_data = utils.split_eval(data)
+        print("train data : %d test_data : %d" %(len(train_data), len(test_data)))
+    else:
+        (true_labels, true_img_paths), (false_labels, false_img_paths) = utils.get_bal_labels_and_bal_img_paths(DATASET_SIZE)
 
-dataset = MaskBaseDataset(
-    img_dir=img_dir
-)
+        false_dataset = MaskDataset(false_img_paths, false_labels)
+        true_dataset = MaskDataset(true_img_paths, true_labels)
 
-# train dataset과 validation dataset을 8:2 비율로 나눕니다.
-n_val = int(len(dataset) * 0.2)
-n_train = len(dataset) - n_val
-train_data, test_data = data.random_split(dataset, [n_train, n_val])
+        each_test_size = 500
+        false_train_data, false_test_data = utils.split_eval(false_dataset,BALANCE_TESTSET, size = each_test_size)
+        true_train_data, true_test_data = utils.split_eval(true_dataset, BALANCE_TESTSET, size = each_test_size)
 
-# 각 dataset에 augmentation 함수를 설정합니다.
-train_data.dataset.set_transform(transform['train'])
-test_data.dataset.set_transform(transform['val'])
+        train_data = torch.utils.data.ConcatDataset([false_train_data, true_train_data])
+        test_data = torch.utils.data.ConcatDataset([false_test_data, true_test_data])
+        ####################################################################################################
+        # ex_num_name += "_only negative trainset"
 
-####################################################################################################
+        # test_data = false_test_data
+        ####################################################################################################
+        print("train data : %d test_data : %d" %(len(train_data), len(test_data)))
+
+        false = [i for i in range(6,18)]
+        count_f = 0
+        count_t = 0
+
+        for t in test_data:
+            if t[1] in false:
+                count_f +=1
+            else:
+                count_t +=1 
+        print("testdata balance stat\nmask data: %dn normal and incorrect data %d" %(count_t, count_f))
+        if count_t != count_f:
+            print("The test dataset is not balance. This may be woring. Proceed?")
+            while True:
+                ans = input("type yes: ")
+                if ans == "yes":
+                    break
+
 
 dataloader = DataLoader(train_data, shuffle = True, batch_size = BATCH_SIZE)
 num_dataset = len(train_data)
@@ -126,13 +137,22 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 model = MaskModel(num_classes).to(device)
 
 import torch.optim as optim
-loss = nn.CrossEntropyLoss()
-opt = optim.Adam(model.parameters(), lr = 1e-3)
+
+from utils import weigted_loss, get_class_weight
+if weigted_loss:
+    weights = get_class_weight()
+    weights = list(map(lambda x:x*5, weights))
+    print(weights)
+    ex_num_name += "_weighted_loss_true_mult_5"
+    # print("weighted cross entropy: weights = ", ' '.join(str(w) for w in weights))
+    loss = nn.CrossEntropyLoss(torch.tensor(weights).to(device))
+else:
+    loss = nn.CrossEntropyLoss()
+opt = optim.Adam(model.parameters(), lr = 1e-3,)
 
 
 from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics import f1_score
-
 
 
 def train():
@@ -183,40 +203,25 @@ def train():
             running_acc_sum += mini_batch_acc
             train_f1_score_sum += mini_batch_f1_score
 
-            # if IS_LOG and idx % 1000 == 99:
-                
-            #     cur_epoch = e * num_dataset + idx
-
-            #     train_f1_score = mini_batch_f1_score
-
-            #     writer.add_scalar('loss/training loss', 
-            #         mini_batch_loss.item(), cur_epoch)
-            #     writer.add_scalar('f1/training f1', 
-            #         mini_batch_f1_score, cur_epoch)
-            #     writer.add_scalar('acc/training acc', 
-            #         mini_batch_acc, cur_epoch)
-                
-            #     evaluate(testloader, cur_epoch, writer, record = True)
-
             
         epoch_loss = loss_sum / num_of_batches
         train_f1_score = train_f1_score_sum / num_of_batches
         train_acc = running_acc_sum/ num_of_batches
 
-        test_loss, test_acc, test_f1_score = evaluate(testloader,num_dataset * (e+1), writer, record = IS_LOG)
+        test_loss, test_acc, test_f1_score = evaluate(testloader,e+1, writer, record = IS_LOG)
 
         print("train loss : %-10.5f test loss = %-10.5f" %(epoch_loss, test_loss))
         print("train acc: %-10.5f test accuracy = %-10.5f" %(train_acc, test_acc))
-        print("train  f1 marco average: %-10.5f test  f1 marco average: %-10.5f" %(test_f1_score, train_f1_score))
+        print("train  f1 marco average: %-10.5f test  f1 marco average: %-10.5f" %(train_f1_score, test_f1_score))
 
 
         if IS_LOG:
             writer.add_scalar('loss/training loss', 
-                epoch_loss, num_dataset * (e+1))
+                epoch_loss, e+1)
             writer.add_scalar('f1/training f1', 
-                train_f1_score, num_dataset * (e+1))
+                train_f1_score, e+1)
             writer.add_scalar('acc/training acc', 
-                train_acc, num_dataset * (e+1))
+                train_acc, e+1)
 
 
     torch.save(model, './models/'+ex_num_name+'resnet_18.pt')

@@ -4,20 +4,46 @@ import torch.utils.data
 
 import configparser
 
+## configparser load
 config = configparser.ConfigParser()
 config.read('config.cfg')
 if not config.sections():
     raise Exception('config file is missing')
 
+## num class
 num_classes = 18
 
+## unfreeze of pretrained
 num_unfreeze_ratio = int( config['trainer']['unfreeze'].split('/')[-1] )
 if num_unfreeze_ratio == 0:
     num_unfreeze_ratio = float('inf')
 
-
+## directory
 img_dir = '/opt/ml/input/data/train/images'
 info_dir = '/opt/ml/input/data/train/train.csv'
+base_model_dir = '/opt/ml/code/base_models/'
+
+
+## weight loss
+weigted_loss = None
+if config['loss']['weight_loss'] == "True":
+    weigted_loss = True
+
+elif config['loss']['weight_loss'] == "False":
+    weigted_loss = False
+else:
+    raise Exception('weight loss config must be True or False')
+
+## base_dataset
+if config['dataset']['base_dataset'] == "True":
+    BASE_DATASET = True
+
+elif config['dataset']['base_dataset'] == "False":
+    BASE_DATASET = False
+
+## model select
+# model_list = split(config['model']['model'])(',')
+# model_index = int(config['model']['index'])
 
 def get_person_dir():
     info = pd.read_csv(info_dir)
@@ -72,6 +98,9 @@ def create_classes(dict):
             else:
                 return 17
 
+
+
+
 def get_labels_and_img_paths(size):
 
 
@@ -111,6 +140,7 @@ def get_bal_labels_and_bal_img_paths(size):
         true_l_and_p = get_all_labels_and_img_paths(all_masks)
         false_l_and_p = get_all_labels_and_img_paths(not_masks)
     elif size.isdigit():
+        size = int(size)
         true_l_and_p = get_mini_labels_mini_img_paths(all_masks, size )
         false_l_and_p = get_mini_labels_mini_img_paths(not_masks, size )
     else:
@@ -171,23 +201,54 @@ def create_img_paths(mask_list, img_dir, p_dir):
 
 
 
-def split_eval(dataset, balance_testset = False):
+def split_eval(dataset, balance_testset = False, size = None):
     """
         return dataset, testset
     """
 
     validate_num = len(dataset) // 10
     if balance_testset:
-        validate_num = validate_num // 2
+        if size == None:
+            raise Exception("utils.split_eval size must be integer.")
+        validate_num = size
 
     return torch.utils.data.random_split(dataset, [ len(dataset) - validate_num, validate_num ], generator=torch.Generator().manual_seed(42))
 
 
 
+def get_class_weight(size = 'all'):
+    # data = get_labels_and_img_paths(size)
+    # labels, paths = data
+    # df = pd.DataFrame({"labels" : labels, "paths":paths})
+    # label_counts = df.labels.value_counts()
+    # target = label_counts.index
+    # total = label_counts.sum()
 
+    # wj=n_samples / (n_classes * n_samplesj)
 
+    # w = []
+    # for i in label_counts:
+    #     w.append(total / (18 * i))
+    # weighted = pd.DataFrame(w)
+    # weights = weighted.set_index(target).sort_index().values.tolist()
 
+    data = get_labels_and_img_paths(size)
+    labels, paths = data
+    df = pd.DataFrame({"labels" : labels, "paths":paths})
+    label_counts = df.labels.value_counts()
+    target = label_counts.index
+    total = label_counts.sum()
 
+    # wj=n_samples / (n_classes * n_samplesj)
 
+    w = []
+    for i in label_counts:
+        w.append(total / (18 * i))
 
+    weighted = pd.DataFrame({'label':target, 'w':w})
+    weighted = weighted.set_index('label')
+    weighted = weighted.sort_index()
+    weights = weighted.w.tolist()    
+        
 
+    return weights

@@ -27,7 +27,7 @@ class TestDataset(Dataset):
         return len(self.img_paths)
 
 def submit():
-    model_name = "ex97_dataset_size_allbanace_testset_Falseresnet_18"
+    model_name = "ex211_num_unfreeze_ratio_2_epochs_20_dataset_size_all_banace_testset_False_base_dataset_weighted_loss_true_mult_5resnet_18"
     PATH = './models/'+model_name + '.pt'
 
     # 테스트 데이터셋 폴더 경로를 지정해주세요.
@@ -41,9 +41,9 @@ def submit():
     # Test Dataset 클래스 객체를 생성하고 DataLoader를 만듭니다.
     image_paths = [os.path.join(image_dir, img_id) for img_id in submission.ImageID]
     transform = transforms.Compose([
-        Resize((512, 384), Image.BILINEAR),
+        # Resize((512, 384), Image.BILINEAR),
         ToTensor(),
-        Normalize(mean=(0.5, 0.5, 0.5), std=(0.2, 0.2, 0.2)),
+        # Normalize(mean=(0.5, 0.5, 0.5), std=(0.2, 0.2, 0.2)),
     ])
     dataset = TestDataset(image_paths, transform)
 
