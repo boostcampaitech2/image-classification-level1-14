@@ -41,9 +41,46 @@ if config['dataset']['base_dataset'] == "True":
 elif config['dataset']['base_dataset'] == "False":
     BASE_DATASET = False
 
-## model select
-# model_list = split(config['model']['model'])(',')
-# model_index = int(config['model']['index'])
+
+IS_LOG = config['log']['tensorboard']
+if IS_LOG == "False":
+    IS_LOG = False
+elif IS_LOG == "True":
+    IS_LOG = True
+else:
+    raise Exception("is log optin only True of False")
+
+
+
+BALANCE_TESTSET = config['dataset']['balance_testset']
+if BALANCE_TESTSET == "False":
+    BALANCE_TESTSET = False
+elif BALANCE_TESTSET == "True":
+    BALANCE_TESTSET = True
+else:
+    raise Exception("balance testset optin only True of False")
+
+## kfold
+if config['dataset']['k-fold'] == "True":
+    K_FOLD = True
+
+elif config['dataset']['k-fold'] == "False":
+    K_FOLD = False
+
+if config['dataset']['k-fold-num'].isdigit():
+    K_FOLD_NUM = int(config['dataset']['k-fold-num'])
+else:
+    raise Exception("k-fold-num conig must be integer")
+
+if config['dataset']['k-fold-epoch'].isdigit():
+    K_FOLD_EPOCH = int(config['dataset']['k-fold-epoch'])
+else:
+    raise Exception("k-fold-epoch conig must be integer")
+## data augmentation
+
+# model select
+model_list = config['model']['model'].split(',')
+model_index = int(config['model']['index'])
 
 def get_person_dir():
     info = pd.read_csv(info_dir)
