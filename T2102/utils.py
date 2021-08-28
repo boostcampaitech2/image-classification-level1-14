@@ -10,13 +10,18 @@ config.read('config.cfg')
 if not config.sections():
     raise Exception('config file is missing')
 
+DATASET_SIZE = config['dataset']['data_size']
+BATCH_SIZE = int(config['dataset']['batch_size'])
+EPOCHS = int( config['trainer']['epoch'] )
+EX_NUM = config['trainer']['ex']
+
 ## num class
-num_classes = 18
+NUM_CLASSES = 18
 
 ## unfreeze of pretrained
-num_unfreeze_ratio = int( config['trainer']['unfreeze'].split('/')[-1] )
-if num_unfreeze_ratio == 0:
-    num_unfreeze_ratio = float('inf')
+UNFREEZE_RATIO = int( config['trainer']['unfreeze'].split('/')[-1] )
+if UNFREEZE_RATIO == 0:
+    UNFREEZE_RATIO = float('inf')
 
 ## directory
 img_dir = '/opt/ml/input/data/train/images'
@@ -79,8 +84,9 @@ else:
 ## data augmentation
 
 # model select
-model_list = config['model']['model'].split(',')
+model_list = config['model']['model'].split(', ')
 model_index = int(config['model']['index'])
+MODEL_NAME = model_list[model_index]
 
 def get_person_dir():
     info = pd.read_csv(info_dir)

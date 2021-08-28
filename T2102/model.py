@@ -3,14 +3,13 @@ import torch.nn as nn
 import torch
 import torch.nn.functional as F
 
-from utils import num_unfreeze_ratio, base_model_dir, model_list, model_index
+from utils import UNFREEZE_RATIO, base_model_dir, MODEL_NAME
 
 class MaskModel(nn.Module):
     def __init__(self, num_classes: int = 18, unfreeze = None):
         super(MaskModel, self).__init__()
         #self.base_model = None#torchvision.models.resnet18(pretrained = True)
-        cur_model = model_list[model_index]
-        self.base_model = torch.load(base_model_dir + cur_model + ".pt")
+        self.base_model = torch.load(base_model_dir + MODEL_NAME + ".pt")
         print(self.base_model)
 
         # self.resnet_18 = torchvision.models.resnet18(pretrained = True)
@@ -22,7 +21,7 @@ class MaskModel(nn.Module):
             if isinstance(c[1], nn.Sequential):
                 num_seq += 1
 
-        num_unfreeze = num_seq // num_unfreeze_ratio
+        num_unfreeze = num_seq // UNFREEZE_RATIO
         print("%d of sequential layers is unfrozen." %(num_unfreeze))
         idx = 0
         for c in self.base_model.named_children():

@@ -128,6 +128,9 @@ torch.nn.init.xavier_uniform(model.fc.weight)
 model.fc.bias.data.fill_(0.01)
 ```
 
+## 실험
+resnet의 unfreeze을 어느 정도로 하는게 가장 좋을까? sequential block을 녹이는 비율을 모듈화했다.  1/2으로 줄이는 것이 가장 성능이 좋았다? 
+
 
 ## 마주한 문제: 입력 차원이 자꾸 틀림... ㅜ 
 dataloader에서 나오면...배치를 신경쓰지 않아야 한다. cnn에서 input channels,output channels, kernel size순서로 받는다. 그래서 들어갈 때 channel 수만 맨 앞으로 넣고 배치는 그냥 생각도 안하면 된다. 채널 수가 뒤에 가 있다면 `permute`, `view`을 사용해서 앞으로 끌어 줌. view는 차원을 명시하는 것이고 permute은 차원의 위ㅣ치는 indice으로 생각해서 바꾸는 것이다. 
@@ -254,10 +257,13 @@ accuracy 먼저 해보자. 이게 잘 맞다면... testset에서도 3이 나와�
 내가 원하는 것: 이 validation set에서 각 레이블이 몇개가 있고, 각 레이블을 얼마나 잘 맞추는지 확인하고 싶다. 각 레이블 마다 몇퍼센트를 맞췄는지 만들어보자. 
 
 ## 가설: 
-차이가 많이 나는 것은 imbalance 때문일 것이다. 따라서 가중치 고려해서 학습하면 줄어든다.
+validation 점수와 실제 제출시의 점수가 차이가 많이 나는 것은 imbalance 때문일 것이다. dataloader에서 랜덤하게 추출해서 학습을 하고 에폭 동안 그 데이터만 계속 학습. 만약 뽑힌 데이터에 imbalance한 데이터가 적게 포함되어 있다면 잘된 데이터를 더 많이 학습할 것이다. 
+
+
+따라서 가중치 고려해서 학습하면 줄어든다.
 weight ce 적용 : 72으로 뛰었다.
 
-그런데 한번 random하게 데이터 뽑으면 계속 학습. 여기에도 overfit이 있다. 뽑힌 데이터만 학습. 따라서 데이터 적은 class는 학습 힘들다. 따라서 k fold 하면 모든 적은 레이블까지 다 학습 가능할 것이다.
+그런데 한번 random하게 데이터 뽑으면 계속 학습. 여기에도 overfit이 있다. 뽑힌 데이터만 학습. 따라서 데이터 적은 class는 학습 힘들다. 따라서 k fold 하면 모든 적은 레이블까지 다 학습 가능할 것이다. 
 
 실험 해보기.
 
