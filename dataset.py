@@ -1,9 +1,12 @@
+import matplotlib.pyplot as plt
+from numpy.lib.shape_base import _put_along_axis_dispatcher
 import os
 import random
 from collections import defaultdict
 from enum import Enum
 from typing import Tuple, List
-
+import pandas as pd
+import tqdm
 import numpy as np
 import torch
 from PIL import Image
@@ -11,7 +14,13 @@ from torch.utils.data import Dataset, Subset, random_split
 from torchvision import transforms
 from torchvision.transforms import *
 from pathlib import Path
+from facenet_pytorch import MTCNN
 from albumentations import *
+!pip install tqdm
+!pip install pandas
+!pip install facenet_pytorch
+!pip install matplotlib
+
 
 IMG_EXTENSIONS = [
     ".jpg", ".JPG", ".jpeg", ".JPEG", ".png",
@@ -55,7 +64,8 @@ class AddGaussianNoise(object):
 class CustomAugmentation:
     def __init__(self, resize, mean, std, **args):
         self.transform = transforms.Compose([
-            RandomBrightnessContrast(brightness_limit=(-0.3, 0.3), contrast_limit=(-0.3, 0.3), p=1.0),
+            RandomBrightnessContrast(
+                brightness_limit=(-0.3, 0.3), contrast_limit=(-0.3, 0.3), p=1.0),
             Resize(resize, Image.BILINEAR),
             ColorJitter(0.1, 0.1, 0.1, 0.1),
             ToTensor(),
@@ -85,7 +95,8 @@ class GenderLabels(int, Enum):
         elif value == "female":
             return cls.FEMALE
         else:
-            raise ValueError(f"Gender value should be either 'male' or 'female', {value}")
+            raise ValueError(
+                f"Gender value should be either 'male' or 'female', {value}")
 
 
 class AgeLabels(int, Enum):
@@ -148,7 +159,8 @@ class MaskBaseDataset(Dataset):
                 if _file_name not in self._file_names:  # "." 로 시작하는 파일 및 invalid 한 파일들은 무시합니다
                     continue
 
-                img_path = os.path.join(self.data_dir, profile, file_name)  # (resized_data, 000004_male_Asian_54, mask1.jpg)
+                # (resized_data, 000004_male_Asian_54, mask1.jpg)
+                img_path = os.path.join(self.data_dir, profile, file_name)
                 mask_label = self._file_names[_file_name]
 
                 id, gender, race, age = profile.split("_")
@@ -163,7 +175,8 @@ class MaskBaseDataset(Dataset):
     def calc_statistics(self):
         has_statistics = self.mean is not None and self.std is not None
         if not has_statistics:
-            print("[Warning] Calculating statistics... It can take a long time depending on your CPU machine")
+            print(
+                "[Warning] Calculating statistics... It can take a long time depending on your CPU machine")
             sums = []
             squared = []
             for image_path in self.image_paths[:3000]:
@@ -184,7 +197,8 @@ class MaskBaseDataset(Dataset):
         mask_label = self.get_mask_label(index)
         gender_label = self.get_gender_label(index)
         age_label = self.get_age_label(index)
-        multi_class_label = self.encode_multi_class(mask_label, gender_label, age_label)
+        multi_class_label = self.encode_multi_class(
+            mask_label, gender_label, age_label)
 
         image_transform = self.transform(image)
         return image_transform, multi_class_label
@@ -264,7 +278,8 @@ class MaskSplitByProfileDataset(MaskBaseDataset):
 
     def setup(self):
         profiles = os.listdir(self.data_dir)
-        profiles = [profile for profile in profiles if not profile.startswith(".")]
+        profiles = [
+            profile for profile in profiles if not profile.startswith(".")]
         split_profiles = self._split_profile(profiles, self.val_ratio)
 
         cnt = 0
@@ -277,7 +292,8 @@ class MaskSplitByProfileDataset(MaskBaseDataset):
                     if _file_name not in self._file_names:  # "." 로 시작하는 파일 및 invalid 한 파일들은 무시합니다
                         continue
 
-                    img_path = os.path.join(self.data_dir, profile, file_name)  # (resized_data, 000004_male_Asian_54, mask1.jpg)
+                    # (resized_data, 000004_male_Asian_54, mask1.jpg)
+                    img_path = os.path.join(self.data_dir, profile, file_name)
                     mask_label = self._file_names[_file_name]
 
                     id, gender, race, age = profile.split("_")
@@ -315,35 +331,39 @@ class TestDataset(Dataset):
     def __len__(self):
         return len(self.img_paths)
 
-def get_fixed_labeled_csv(): 
+
+def get_fixed_labeled_csv():
     df = pd.read_csv("/opt/ml/input/data/train/train.csv")
 
     id_overlap_error = ["003397"]
-    gender_labeling_error = ['006359', '006360', '006361', '006362', '006363', '006364']
+    gender_labeling_error = ['006359', '006360',
+                             '006361', '006362', '006363', '006364']
     mask_labeling_error = ['000020', '004418', '005227']
 
     id_max = int(max(df['id']))
     id_new = id_max+1
 
-    new_data_list=[]
+    new_data_list = []
 
-    for idx in tqdm(range(len(df))):  # tqdm 을 이용하면 현재 데이터가 얼마나 처리되고 있는지 파악되어 좋습니다.
+    # tqdm 을 이용하면 현재 데이터가 얼마나 처리되고 있는지 파악되어 좋습니다.
+    for idx in tqdm(range(len(df))):
         _path = df['path'].iloc[idx]  # 순서대로 가져와야 하기 때문에 iloc을 사용해 가져옵니다.
         _gender = df['gender'].iloc[idx]
         _age = df['age'].iloc[idx]
         _id = df['id'].iloc[idx]
 
         if _id in id_overlap_error:
-            _id='%06d'%(id_new)
+            _id = '%06d' % (id_new)
             id_new += 1
-        
+
         if _id in gender_labeling_error:
             if _gender == "male":
                 _gender = 'female'
             else:
                 _gender = 'male'
-        
-        for img_name in Path("/opt/ml/input/data/train/images/{_path}").iterdir():  # 각 dir의 이미지들을 iterative 하게 가져옵니다.
+
+        # 각 dir의 이미지들을 iterative 하게 가져옵니다.
+        for img_name in Path("/opt/ml/input/data/train/images/{_path}").iterdir():
             img_stem = img_name.stem  # 해당 파일의 파일명만을 가져옵니다. 확장자 제외.
             if not img_stem.startswith('._'):  # avoid hidden files
                 if _id in mask_labeling_error:
@@ -351,11 +371,12 @@ def get_fixed_labeled_csv():
                         img_stem = 'normal'
                     elif img_stem == 'normal':
                         img_stem = 'incorrect_mask'
-                new_data_list.append([_id, _age, _gender, img_stem, img_name.__str__()]) 
-        
+                new_data_list.append(
+                    [_id, _age, _gender, img_stem, img_name.__str__()])
+
     df = pd.DataFrame(new_data_list)
     df.columns = ['id', 'age', 'gender', 'stem', 'img_path']
-    
+
     df['label'] = 0  # SET SCORE
     # AGE
     df['label'] += ((df['age'] >= 30) & (df['age'] < 60))*1
@@ -368,56 +389,64 @@ def get_fixed_labeled_csv():
     df['label'] += (df['stem'].isin(['incorrect_mask']))*6
     df['label'] += (df['stem'].isin(['normal']))*12
 
-    df.to_csv('/opt/ml/code/labeled_data.csv', sep=',' ,na_rep='NaN')
+    df.to_csv('/opt/ml/code/labeled_data.csv', sep=',', na_rep='NaN')
+
 
 def get_cropped_and_fixed_images():
-#--------gpu 사용여부, 없어도 되면 지워주세요----#
+    #--------gpu 사용여부, 없어도 되면 지워주세요----#
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
-# ---------------------------#    
+# ---------------------------#
     mtcnn = MTCNN(keep_all=True, device=device)
     new_img_dir = '/opt/ml/input/data/train/new_imgs'
     df = pd.read_csv("/opt/ml/code/labeled_data.csv")
 
-    !mkdir /opt/ml/input/data/train/new_imgs
+    os.mkdir("/opt/ml/input/data/train/new_imgs")
 
     cnt = 0
 
     for index in tqdm(range(len(df))):
 
-            path = df.iloc[index].img_path
-            img = cv2.imread(path)
-            img = cv2.cvtColor(img,cv2.COLOR_BGR2RGB)
+        path = df.iloc[index].img_path
+        img = cv2.imread(path)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-            #mtcnn 적용
-            boxes,probs = mtcnn.detect(img)
+        # mtcnn 적용
+        boxes, probs = mtcnn.detect(img)
 
-            if not isinstance(boxes, np.ndarray):
-                # 직접 crop
-                img=img[100:400, 50:350, :]
+        if not isinstance(boxes, np.ndarray):
+            # 직접 crop
+            img = img[100:400, 50:350, :]
 
-            # boexes size 확인
-            else:
-                xmin = int(boxes[0, 0])-30
-                ymin = int(boxes[0, 1])-30
-                xmax = int(boxes[0, 2])+30
-                ymax = int(boxes[0, 3])+30
+        # boexes size 확인
+        else:
+            xmin = int(boxes[0, 0])-30
+            ymin = int(boxes[0, 1])-30
+            xmax = int(boxes[0, 2])+30
+            ymax = int(boxes[0, 3])+30
 
-                if xmin < 0: xmin = 0
-                if ymin < 0: ymin = 0
-                if xmax > 384: xmax = 384
-                if ymax > 512: ymax = 512
+            if xmin < 0:
+                xmin = 0
+            if ymin < 0:
+                ymin = 0
+            if xmax > 384:
+                xmax = 384
+            if ymax > 512:
+                ymax = 512
 
-                img = img[ymin:ymax, xmin:xmax, :]
+            img = img[ymin:ymax, xmin:xmax, :]
 
-                img_fixed_dir = '_'.join([df.iloc[index].id,df.iloc[index].gender,"Asian",str(df.iloc[index].age)])
-                basename = os.path.basename(path)
-                ext = os.path.splitext(basename)[1].lower()
+            img_fixed_dir = '_'.join(
+                [df.iloc[index].id, df.iloc[index].gender, "Asian", str(df.iloc[index].age)])
+            basename = os.path.basename(path)
+            ext = os.path.splitext(basename)[1].lower()
 
-            tmp = os.path.join(new_img_dir,img_fixed_dir)
-            cnt += 1
+        tmp = os.path.join(new_img_dir, img_fixed_dir)
+        cnt += 1
 
-            try:os.mkdir(tmp)
-            except:pass
+        try:
+            os.mkdir(tmp)
+        except:
+            pass
 
-            plt.imsave(os.path.join(tmp,df.iloc[index].stem+ext),img)
+        plt.imsave(os.path.join(tmp, df.iloc[index].stem+ext), img)
