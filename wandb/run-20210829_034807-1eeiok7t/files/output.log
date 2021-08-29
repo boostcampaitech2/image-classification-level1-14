@@ -1,0 +1,48 @@
+
+Namespace(augmentation='CustomAugmentation', batch_size=64, criterion='label_smoothing', data_dir='/opt/ml/input/data/train/new_imgs', dataset='MaskBaseDataset', epochs=30, log_interval=20, lr=0.001, lr_decay_step=100, model='resnet50', model_dir='/opt/ml/code/baseline/model', name='exp', optimizer='Adam', resize=[128, 96], seed=42, val_ratio=0.2, valid_batch_size=16)
+****************************************************************************************************
+optimizer , Adam (
+Parameter Group 0
+    amsgrad: False
+    betas: (0.9, 0.999)
+    eps: 1e-08
+    lr: 0.001
+    weight_decay: 0.0005
+)
+Epoch[0/30](20/236) || training loss 2.838 || training accuracy 39.22% || lr 0.001
+Epoch[0/30](40/236) || training loss 1.278 || training accuracy 58.05% || lr 0.001
+Traceback (most recent call last):
+  File "train.py", line 352, in <module>
+    train(data_dir, model_dir, args)
+  File "train.py", line 191, in train
+    outs = model(inputs)
+  File "/opt/conda/lib/python3.8/site-packages/torch/nn/modules/module.py", line 722, in _call_impl
+    result = self.forward(*input, **kwargs)
+  File "/opt/conda/lib/python3.8/site-packages/torch/nn/parallel/data_parallel.py", line 153, in forward
+    return self.module(*inputs[0], **kwargs[0])
+  File "/opt/conda/lib/python3.8/site-packages/torch/nn/modules/module.py", line 722, in _call_impl
+    result = self.forward(*input, **kwargs)
+  File "/opt/ml/code/baseline/model.py", line 64, in forward
+    return self.net(x)
+  File "/opt/conda/lib/python3.8/site-packages/torch/nn/modules/module.py", line 722, in _call_impl
+    result = self.forward(*input, **kwargs)
+  File "/opt/conda/lib/python3.8/site-packages/torchvision/models/resnet.py", line 220, in forward
+    return self._forward_impl(x)
+  File "/opt/conda/lib/python3.8/site-packages/torchvision/models/resnet.py", line 210, in _forward_impl
+    x = self.layer3(x)
+  File "/opt/conda/lib/python3.8/site-packages/torch/nn/modules/module.py", line 722, in _call_impl
+    result = self.forward(*input, **kwargs)
+  File "/opt/conda/lib/python3.8/site-packages/torch/nn/modules/container.py", line 117, in forward
+    input = module(input)
+  File "/opt/conda/lib/python3.8/site-packages/torch/nn/modules/module.py", line 722, in _call_impl
+    result = self.forward(*input, **kwargs)
+  File "/opt/conda/lib/python3.8/site-packages/torchvision/models/resnet.py", line 113, in forward
+    out = self.bn3(out)
+  File "/opt/conda/lib/python3.8/site-packages/torch/nn/modules/module.py", line 722, in _call_impl
+    result = self.forward(*input, **kwargs)
+  File "/opt/conda/lib/python3.8/site-packages/torch/nn/modules/batchnorm.py", line 131, in forward
+    return F.batch_norm(
+  File "/opt/conda/lib/python3.8/site-packages/torch/nn/functional.py", line 2014, in batch_norm
+    return torch.batch_norm(
+KeyboardInterrupt
+Epoch[0/30](60/236) || training loss 1.042 || training accuracy 62.66% || lr 0.001

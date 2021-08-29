@@ -1,0 +1,23 @@
+
+Namespace(augmentation='CustomAugmentation', batch_size=64, criterion='label_smoothing', data_dir='/opt/ml/input/data/train/new_imgs', dataset='MaskBaseDataset', epochs=30, log_interval=20, lr=0.001, lr_decay_step=100, model='convit', model_dir='/opt/ml/code/baseline/model', name='exp', optimizer='Adam', resize=[128, 96], seed=42, val_ratio=0.2, valid_batch_size=16)
+Downloading: "https://dl.fbaipublicfiles.com/convit/convit_base.pth" to /opt/ml/.cache/torch/hub/checkpoints/convit_base.pth
+Traceback (most recent call last):
+  File "train.py", line 352, in <module>
+    train(data_dir, model_dir, args)
+  File "train.py", line 147, in train
+    model = model_module(
+  File "/opt/ml/code/baseline/model.py", line 29, in __init__
+    self.net = timm.create_model('convit_base',pretrained=True)
+  File "/opt/conda/lib/python3.8/site-packages/timm/models/factory.py", line 81, in create_model
+    model = create_fn(pretrained=pretrained, **kwargs)
+  File "/opt/conda/lib/python3.8/site-packages/timm/models/convit.py", line 348, in convit_base
+    model = _create_convit(variant='convit_base', pretrained=pretrained, **model_args)
+  File "/opt/conda/lib/python3.8/site-packages/timm/models/convit.py", line 319, in _create_convit
+    return build_model_with_cfg(
+  File "/opt/conda/lib/python3.8/site-packages/timm/models/helpers.py", line 457, in build_model_with_cfg
+    load_pretrained(
+  File "/opt/conda/lib/python3.8/site-packages/timm/models/helpers.py", line 184, in load_pretrained
+    state_dict = load_state_dict_from_url(pretrained_url, progress=progress, map_location='cpu')
+  File "/opt/conda/lib/python3.8/site-packages/torch/hub.py", line 490, in load_state_dict_from_url
+    raise RuntimeError('Only one file(not dir) is allowed in the zipfile')
+RuntimeError: Only one file(not dir) is allowed in the zipfile
