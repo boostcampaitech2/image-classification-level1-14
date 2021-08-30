@@ -241,9 +241,9 @@ if __name__ == '__main__':
 
 
 
-    # from dotenv import load_dotenv
+    from dotenv import load_dotenv
     import os
-    # load_dotenv(verbose=True)
+    load_dotenv(verbose=True)
 
     from ConfigParser import seed, epochs, dataset, augmentation, resize, batch_size, valid_batch_size, model, optimizer, lr, val_ratio, criterion, lr_decay_step, log_interval, name
 
