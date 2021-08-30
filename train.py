@@ -153,7 +153,7 @@ def train(data_dir, model_dir, args):
     print("*"*100)
     print(f"optimizer , {optimizer}")
     # scheduler = StepLR(optimizer, args.lr_decay_step, gamma=0.5)
-    scheduler = ReduceLROnPlateau(optimizer,'min',factor=0.1, patience=5)
+    scheduler = ReduceLROnPlateau(optimizer,'min',factor=0.1, patience=2)
 
     # -- logging
 
@@ -236,6 +236,7 @@ def train(data_dir, model_dir, args):
             val_acc = np.sum(val_acc_items) / len(val_set)
             best_val_loss = min(best_val_loss, val_loss)
             if val_acc > best_val_acc:
+                early_stop_count=0
                 print(f"New best model for val accuracy : {val_acc:4.2%}! saving the best model..")
                 torch.save(model.module.state_dict(), f"{save_dir}/best.pth")
                 print('model path', f"{save_dir}")
@@ -255,7 +256,7 @@ def train(data_dir, model_dir, args):
             scheduler.step(val_loss)
             print()
 
-            if early_stop_count == 5:
+            if early_stop_count == 7:
                 break
                 
     logger.flush()
