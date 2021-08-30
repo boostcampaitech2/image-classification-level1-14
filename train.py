@@ -1,5 +1,3 @@
-# original baseline code
-
 import argparse
 import glob
 import json
