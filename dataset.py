@@ -194,7 +194,7 @@ class MaskBaseDataset(Dataset):
         gender_label = self.get_gender_label(index)
         age_label = self.get_age_label(index)
 
-        image_transform = self.transform(image=np.array(image))['image']
+        image_transform = self.transform(image)
         return image_transform, mask_label, gender_label, age_label
 
     def __len__(self):
