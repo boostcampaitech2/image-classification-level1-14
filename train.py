@@ -17,13 +17,11 @@ from torch.utils.tensorboard import SummaryWriter
 
 from dataset import MaskBaseDataset
 from dataset import get_fixed_labeled_csv, get_cropped_and_fixed_images
-from dataset import encode_multi_class
+from dataset import encode_multi_class, rand_bbox
 from loss import create_criterion
 
 from sklearn.metrics import f1_score
 import wandb
-
-wandb.init(project="my-test-project", entity='tkdlqh2')
 
 
 def seed_everything(seed):
@@ -94,8 +92,8 @@ def increment_path(path, exist_ok=False):
 
 
 def train(data_dir, model_dir, args):
+    wandb.init(project=args.wandb_ProjectName, entity=args.wandb_ID)
     seed_everything(args.seed)
-
     save_dir = increment_path(os.path.join(model_dir, args.name))
 
     # -- settings
@@ -185,7 +183,6 @@ def train(data_dir, model_dir, args):
 
         for idx, train_batch in enumerate(train_loader):
             inputs, mask_label, gender_label, age_label = train_batch
-
             inputs = inputs.to(device)
             mask_label = mask_label.to(device)
             gender_label = gender_label.to(device)
@@ -193,18 +190,48 @@ def train(data_dir, model_dir, args):
             labels = encode_multi_class(mask_label, gender_label, age_label)
 
             optimizer.zero_grad()
-            outs = model(inputs)
+
+            if args.cutMix and np.random.random() < args.cutMixProb:
+                lam = np.random.beta(1, 1)
+                rand_index = torch.randperm(inputs.size()[0]).to(device)
+
+                mask_label_a = mask_label  # 원본 이미지 label
+                mask_label_b = mask_label[rand_index]  # 패치 이미지 label
+                gender_label_a = gender_label
+                gender_label_b = gender_label[rand_index]
+                age_label_a = age_label
+                age_label_b = age_label[rand_index]
+
+                bbx1, bby1, bbx2, bby2 = rand_bbox(inputs.size(), lam)
+                inputs[:, :, bbx1:bbx2, bby1:bby2] = inputs[rand_index,
+                                                            :, bbx1:bbx2, bby1:bby2]
+                lam = 1 - ((bbx2 - bbx1) * (bby2 - bby1) /
+                           (inputs.size()[-1] * inputs.size()[-2]))
+
+                outs = model(inputs)
+
+                loss_mask = criterion(
+                    outs['mask'], mask_label_a)*lam + criterion(outs['mask'], mask_label_b) * (1 - lam)
+                loss_gender = criterion(
+                    outs['gender'], gender_label_a)*lam + criterion(outs['gender'], gender_label_b) * (1 - lam)
+                loss_age = criterion(
+                    outs['age'], age_label_a)*lam + criterion(outs['age'], age_label_b) * (1 - lam)
+                loss = loss_mask + loss_gender + loss_age
+
+            else:
+                outs = model(inputs)
+
+                loss_mask = criterion(outs['mask'], mask_label)
+                loss_gender = criterion(outs['gender'], gender_label)
+                loss_age = criterion(outs['age'], age_label)
+                loss = loss_mask + loss_gender + loss_age
 
             mask_preds = torch.argmax(outs['mask'], dim=-1)
             gender_preds = torch.argmax(outs['gender'], dim=-1)
             age_preds = torch.argmax(outs['age'], dim=-1)
             preds = encode_multi_class(mask_preds, gender_preds, age_preds)
 
-            loss_mask = criterion(outs['mask'], mask_label)
-            loss_gender = criterion(outs['gender'], gender_label)
-            loss_age = criterion(outs['age'], age_label)
-            loss = loss_mask + loss_gender + loss_age
-            loss.backward()
+            loss.backward(retain_graph=True)
             optimizer.step()
 
             loss_value += loss.item()
@@ -333,7 +360,7 @@ if __name__ == '__main__':
                         help='input batch size for training (default: 64)')
     parser.add_argument('--valid_batch_size', type=int, default=16,
                         help='input batch size for validing (default: 16)')
-    parser.add_argument('--model', type=str, default='efficient',
+    parser.add_argument('--model', type=str, default='resnet50',
                         help='model type (default: resnet50)')
     parser.add_argument('--optimizer', type=str, default='Adam',
                         help='optimizer type (default: Adam)')
@@ -349,6 +376,13 @@ if __name__ == '__main__':
                         help='how many batches to wait before logging training status')
     parser.add_argument('--name', default='exp',
                         help='model save at {SM_MODEL_DIR}/{name}')
+    parser.add_argument('--cutMix', default=True, help='Decide using cutmix')
+    parser.add_argument('--cutMixProb', default=0.3,
+                        help='Ratio using cutmixed input')
+    parser.add_argument('--wandb_ID', default='tkdlqh2',
+                        help='Weight&Biases ID')
+    parser.add_argument('--wandb_ProjectName',
+                        default='my-test-project', help='Weight&Biases Project Name')
 
     if os.path.isfile("/opt/ml/code/labeled_data.csv"):
         if not os.path.isdir("/opt/ml/input/data/train/new_imgs"):
