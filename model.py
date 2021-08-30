@@ -59,6 +59,10 @@ class efficient(nn.Module):
     def __init__(self, num_classes_mask, num_classes_gender, num_classes_age):
         super().__init__()
         self.net = timm.create_model('efficientnet_b3', pretrained=True)
+
+        for param in self.net.parameters():
+            param.requires_grad = False
+
         self.linear_mask = nn.Linear(
             in_features=1000, out_features=num_classes_mask, bias=True)
         self.linear_gender = nn.Linear(
@@ -81,6 +85,10 @@ class resnet50(nn.Module):
         super().__init__()
 
         self.net = models.resnet50(pretrained=True)
+
+        for param in self.net.parameters():
+            param.requires_grad = False
+
         self.linear_mask = nn.Linear(
             in_features=1000, out_features=num_classes_mask, bias=True)
         self.linear_gender = nn.Linear(
@@ -104,6 +112,10 @@ class VGG19(nn.Module):
         3. 모델의 output_dimension 은 num_classes 로 설정해주세요.
         """
         self.net = models.vgg19_bn(pretrained=True)
+
+        for param in self.net.parameters():
+            param.requires_grad = False
+
         self.linear_mask = nn.Linear(
             in_features=1000, out_features=num_classes_mask, bias=True)
         self.linear_gender = nn.Linear(

@@ -304,7 +304,7 @@ def train(data_dir, model_dir, args):
                 {'Val/loss': val_loss, 'Val/accuracy': val_acc, "f1_score": epoch_f1})
             print()
 
-            if early_stop_count == 7:
+            if early_stop_count == 20:
                 break
 
 
@@ -323,7 +323,7 @@ if __name__ == '__main__':
                         help='random seed (default: 2141)')
     parser.add_argument('--epochs', type=int, default=30,
                         help='number of epochs to train (default: 30)')
-    parser.add_argument('--dataset', type=str, default='MaskBaseDataset',
+    parser.add_argument('--dataset', type=str, default='MaskSplitByProfileDataset',
                         help='dataset augmentation type (default: MaskBaseDataset)')
     parser.add_argument('--augmentation', type=str, default='CustomAugmentation',
                         help='data augmentation type (default: CustomAugmentation)')
