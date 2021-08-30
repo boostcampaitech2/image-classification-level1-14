@@ -53,22 +53,23 @@ class MyModel(nn.Module):
         """
         return x
 
-class efficient(nn.Module):
-    def __init__(self, num_classes):
-        super().__init__()
-        self.net = EfficientNet.from_pretrained('efficientnet-b4')
+# class efficient(nn.Module):
+#     def __init__(self, num_classes):
+#         super().__init__()
+#         self.net = EfficientNet.from_pretrained('efficientnet-b4',num_classes=num_classes)
 
-        for param in self.net.parameters():
-            param.requires_grad = False   
-        num_feat = self.net.fc.in_features
-        self.net.fc = nn.Linear(num_feat, num_classes)
+#         for n,p in self.net.named_parameters():
+#             if '_fc' not in n:
+#                 p.requires_grad = False
+        
+#         # model = torch.nn.parallel.DistributedDataParallel(model)
 
-    def forward(self, x):
-        """
-        1. 위에서 정의한 모델 아키텍쳐를 forward propagation 을 진행해주세요
-        2. 결과로 나온 output 을 return 해주세요
-        """
-        return self.net(x)
+#     def forward(self, x):
+#         """
+#         1. 위에서 정의한 모델 아키텍쳐를 forward propagation 을 진행해주세요
+#         2. 결과로 나온 output 을 return 해주세요
+#         """
+#         return self.net(x)
 
 
 # Custom Model Template
