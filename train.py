@@ -11,12 +11,19 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from torch.optim.lr_scheduler import StepLR
+from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 from dataset import MaskBaseDataset
+
+from dataset import get_fixed_labeled_csv, get_cropped_and_fixed_images
 from loss import create_criterion
+
+from sklearn.metrics import f1_score
+import wandb
+
+wandb.init(project="my-test-project", entity='tkdlqh2')
 
 
 def seed_everything(seed):
@@ -38,9 +45,12 @@ def grid_image(np_images, gts, preds, n=16, shuffle=False):
     batch_size = np_images.shape[0]
     assert n <= batch_size
 
-    choices = random.choices(range(batch_size), k=n) if shuffle else list(range(n))
-    figure = plt.figure(figsize=(12, 18 + 2))  # cautions: hardcoded, 이미지 크기에 따라 figsize 를 조정해야 할 수 있습니다. T.T
-    plt.subplots_adjust(top=0.8)               # cautions: hardcoded, 이미지 크기에 따라 top 를 조정해야 할 수 있습니다. T.T
+    choices = random.choices(
+        range(batch_size), k=n) if shuffle else list(range(n))
+    # cautions: hardcoded, 이미지 크기에 따라 figsize 를 조정해야 할 수 있습니다. T.T
+    figure = plt.figure(figsize=(12, 18 + 2))
+    # cautions: hardcoded, 이미지 크기에 따라 top 를 조정해야 할 수 있습니다. T.T
+    plt.subplots_adjust(top=0.8)
     n_grid = np.ceil(n ** 0.5)
     tasks = ["mask", "gender", "age"]
     for idx, choice in enumerate(choices):
@@ -93,14 +103,16 @@ def train(data_dir, model_dir, args):
     device = torch.device("cuda" if use_cuda else "cpu")
 
     # -- dataset
-    dataset_module = getattr(import_module("dataset"), args.dataset)  # default: BaseAugmentation
+    # default: BaseAugmentation
+    dataset_module = getattr(import_module("dataset"), args.dataset)
     dataset = dataset_module(
         data_dir=data_dir,
     )
     num_classes = dataset.num_classes  # 18
 
     # -- augmentation
-    transform_module = getattr(import_module("dataset"), args.augmentation)  # default: BaseAugmentation
+    transform_module = getattr(import_module(
+        "dataset"), args.augmentation)  # default: BaseAugmentation
     transform = transform_module(
         resize=args.resize,
         mean=dataset.mean,
@@ -130,7 +142,8 @@ def train(data_dir, model_dir, args):
     )
 
     # -- model
-    model_module = getattr(import_module("model"), args.model)  # default: BaseModel
+    model_module = getattr(import_module(
+        "model"), args.model)  # default: BaseModel
     model = model_module(
         num_classes=num_classes
     ).to(device)
@@ -138,13 +151,18 @@ def train(data_dir, model_dir, args):
 
     # -- loss & metric
     criterion = create_criterion(args.criterion)  # default: cross_entropy
-    opt_module = getattr(import_module("torch.optim"), args.optimizer)  # default: SGD
+    opt_module = getattr(import_module("torch.optim"),
+                         args.optimizer)  # default: SGD
     optimizer = opt_module(
         filter(lambda p: p.requires_grad, model.parameters()),
         lr=args.lr,
         weight_decay=5e-4
     )
-    scheduler = StepLR(optimizer, args.lr_decay_step, gamma=0.5)
+
+    print("*"*100)
+    print(f"optimizer , {optimizer}")
+    # scheduler = StepLR(optimizer, args.lr_decay_step, gamma=0.5)
+    scheduler = ReduceLROnPlateau(optimizer, 'min', factor=0.1, patience=10)
 
     # -- logging
     logger = SummaryWriter(log_dir=save_dir)
@@ -153,11 +171,16 @@ def train(data_dir, model_dir, args):
 
     best_val_acc = 0
     best_val_loss = np.inf
+    early_stop_count = 0
     for epoch in range(args.epochs):
         # train loop
         model.train()
         loss_value = 0
         matches = 0
+
+        columns = ["guess", "truth"]
+        test_table = wandb.Table(columns=columns)
+
         for idx, train_batch in enumerate(train_loader):
             inputs, labels = train_batch
             inputs = inputs.to(device)
@@ -182,13 +205,16 @@ def train(data_dir, model_dir, args):
                     f"Epoch[{epoch}/{args.epochs}]({idx + 1}/{len(train_loader)}) || "
                     f"training loss {train_loss:4.4} || training accuracy {train_acc:4.2%} || lr {current_lr}"
                 )
-                logger.add_scalar("Train/loss", train_loss, epoch * len(train_loader) + idx)
-                logger.add_scalar("Train/accuracy", train_acc, epoch * len(train_loader) + idx)
+                logger.add_scalar("Train/loss", train_loss,
+                                  epoch * len(train_loader) + idx)
+                logger.add_scalar("Train/accuracy", train_acc,
+                                  epoch * len(train_loader) + idx)
+                wandb.log(
+                    {'Train/loss': train_loss, 'Train/accuracy': train_acc})
 
+                scheduler.step(loss_value)
                 loss_value = 0
                 matches = 0
-
-        scheduler.step()
 
         # val loop
         with torch.no_grad():
@@ -196,7 +222,10 @@ def train(data_dir, model_dir, args):
             model.eval()
             val_loss_items = []
             val_acc_items = []
+            epoch_f1 = 0
+            n_iter = 0
             figure = None
+
             for val_batch in val_loader:
                 inputs, labels = val_batch
                 inputs = inputs.to(device)
@@ -210,58 +239,109 @@ def train(data_dir, model_dir, args):
                 val_loss_items.append(loss_item)
                 val_acc_items.append(acc_item)
 
+                epoch_f1 += f1_score(labels.cpu().numpy(),
+                                     preds.cpu().numpy(), average='macro')
+                n_iter += 1
                 if figure is None:
-                    inputs_np = torch.clone(inputs).detach().cpu().permute(0, 2, 3, 1).numpy()
-                    inputs_np = dataset_module.denormalize_image(inputs_np, dataset.mean, dataset.std)
+                    inputs_np = torch.clone(inputs).detach(
+                    ).cpu().permute(0, 2, 3, 1).numpy()
+                    inputs_np = dataset_module.denormalize_image(
+                        inputs_np, dataset.mean, dataset.std)
                     figure = grid_image(
-                        inputs_np, labels, preds, n=16, shuffle=args.dataset != "MaskSplitByProfileDataset"
+                        inputs_np, labels, preds, n=16, shuffle=False
                     )
 
+                for i in range(args.valid_batch_size):
+                    test_table.add_data(labels[i], preds[i])
+
+            epoch_f1 = epoch_f1/n_iter
             val_loss = np.sum(val_loss_items) / len(val_loader)
             val_acc = np.sum(val_acc_items) / len(val_set)
             best_val_loss = min(best_val_loss, val_loss)
             if val_acc > best_val_acc:
-                print(f"New best model for val accuracy : {val_acc:4.2%}! saving the best model..")
+                print(
+                    f"New best model for val accuracy : {val_acc:4.2%}! saving the best model..")
                 torch.save(model.module.state_dict(), f"{save_dir}/best.pth")
+                print('model path', f"{save_dir}")
                 best_val_acc = val_acc
+            else:
+                early_stop_count += 1
+
             torch.save(model.module.state_dict(), f"{save_dir}/last.pth")
             print(
                 f"[Val] acc : {val_acc:4.2%}, loss: {val_loss:4.2} || "
-                f"best acc : {best_val_acc:4.2%}, best loss: {best_val_loss:4.2}"
+                f"best acc : {best_val_acc:4.2%}, best loss: {best_val_loss:4.2} || "
+                f"f1_score : {epoch_f1:0.4}"
             )
             logger.add_scalar("Val/loss", val_loss, epoch)
             logger.add_scalar("Val/accuracy", val_acc, epoch)
             logger.add_figure("results", figure, epoch)
+            wandb.log({"table_key": test_table})
+            wandb.log(
+                {'Val/loss': val_loss, 'Val/accuracy': val_acc, "f1_score": epoch_f1})
             print()
+
+            if early_stop_count == 7:
+                break
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
-    from dotenv import load_dotenv
+    # from dotenv import load_dotenv
     import os
-    load_dotenv(verbose=True)
+    # load_dotenv(verbose=True)
 
+    # 다양한 하이퍼파라미터 세팅으로 학습 진행
+    # 텐서보드를 통해 학습 양상을 실시간으로 확인, 점검하고 실험 간 결과 비교
+    # 커스텀 모듈을 추가해 성능을 더 끌어올려보기
     # Data and model checkpoints directories
-    parser.add_argument('--seed', type=int, default=42, help='random seed (default: 42)')
-    parser.add_argument('--epochs', type=int, default=1, help='number of epochs to train (default: 1)')
-    parser.add_argument('--dataset', type=str, default='MaskBaseDataset', help='dataset augmentation type (default: MaskBaseDataset)')
-    parser.add_argument('--augmentation', type=str, default='BaseAugmentation', help='data augmentation type (default: BaseAugmentation)')
-    parser.add_argument("--resize", nargs="+", type=list, default=[128, 96], help='resize size for image when training')
-    parser.add_argument('--batch_size', type=int, default=64, help='input batch size for training (default: 64)')
-    parser.add_argument('--valid_batch_size', type=int, default=1000, help='input batch size for validing (default: 1000)')
-    parser.add_argument('--model', type=str, default='BaseModel', help='model type (default: BaseModel)')
-    parser.add_argument('--optimizer', type=str, default='SGD', help='optimizer type (default: SGD)')
-    parser.add_argument('--lr', type=float, default=1e-3, help='learning rate (default: 1e-3)')
-    parser.add_argument('--val_ratio', type=float, default=0.2, help='ratio for validaton (default: 0.2)')
-    parser.add_argument('--criterion', type=str, default='cross_entropy', help='criterion type (default: cross_entropy)')
-    parser.add_argument('--lr_decay_step', type=int, default=20, help='learning rate scheduler deacy step (default: 20)')
-    parser.add_argument('--log_interval', type=int, default=20, help='how many batches to wait before logging training status')
-    parser.add_argument('--name', default='exp', help='model save at {SM_MODEL_DIR}/{name}')
+    parser.add_argument('--seed', type=int, default=2141,
+                        help='random seed (default: 2141)')
+    parser.add_argument('--epochs', type=int, default=30,
+                        help='number of epochs to train (default: 30)')
+    parser.add_argument('--dataset', type=str, default='MaskBaseDataset',
+                        help='dataset augmentation type (default: MaskBaseDataset)')
+    parser.add_argument('--augmentation', type=str, default='CustomAugmentation',
+                        help='data augmentation type (default: CustomAugmentation)')
+    parser.add_argument("--resize", nargs="+", type=list,
+                        default=[128, 128], help='resize size for image when training')
+    parser.add_argument('--batch_size', type=int, default=64,
+                        help='input batch size for training (default: 64)')
+    parser.add_argument('--valid_batch_size', type=int, default=16,
+                        help='input batch size for validing (default: 16)')
+    parser.add_argument('--model', type=str, default='efficient',
+                        help='model type (default: resnet50)')
+    parser.add_argument('--optimizer', type=str, default='Adam',
+                        help='optimizer type (default: Adam)')
+    parser.add_argument('--lr', type=float, default=1e-3,
+                        help='learning rate (default: 1e-3)')
+    parser.add_argument('--val_ratio', type=float, default=0.2,
+                        help='ratio for validaton (default: 0.2)')
+    parser.add_argument('--criterion', type=str, default='label_smoothing',
+                        help='criterion type (default: focal)')
+    parser.add_argument('--lr_decay_step', type=int, default=100,
+                        help='learning rate scheduler deacy step (default: 20)')
+    parser.add_argument('--log_interval', type=int, default=20,
+                        help='how many batches to wait before logging training status')
+    parser.add_argument('--name', default='exp',
+                        help='model save at {SM_MODEL_DIR}/{name}')
+
+    if os.path.isfile("/opt/ml/code/labeled_data.csv"):
+        if not os.path.isdir("/opt/ml/input/data/train/new_imgs"):
+            print("Saving Cropped images")
+            get_cropped_and_fixed_images()
+    else:
+        print("You have to make error-fixed csv!!")
+        get_fixed_labeled_csv()
+        print("Saving Cropped images")
+        get_cropped_and_fixed_images()
 
     # Container environment
-    parser.add_argument('--data_dir', type=str, default=os.environ.get('SM_CHANNEL_TRAIN', '/opt/ml/input/data/train/images'))
-    parser.add_argument('--model_dir', type=str, default=os.environ.get('SM_MODEL_DIR', './model'))
+    parser.add_argument('--data_dir', type=str, default=os.environ.get(
+        'SM_CHANNEL_TRAIN', '/opt/ml/input/data/train/new_imgs'))
+    parser.add_argument('--model_dir', type=str, default=os.environ.get(
+        'SM_MODEL_DIR', '/opt/ml/code/p1_baseline/model'))
 
     args = parser.parse_args()
     print(args)
