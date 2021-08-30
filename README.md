@@ -5,6 +5,8 @@ image-classification-level1-14 created by GitHub Classroom
 * T2102: 백재형 baekTree
 * T2151: 이나영 
 
+## Google Docs
+https://docs.google.com/document/d/1QKYWxBgnkJC-4CD5-rOlD8_7qICw0V8HkjbsrZV0rbg/edit 
 
 # pstage_01_image_classification
 
