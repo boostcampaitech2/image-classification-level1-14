@@ -56,7 +56,7 @@ class MyModel(nn.Module):
 class efficient(nn.Module):
     def __init__(self, num_classes):
         super().__init__()
-        self.net = EfficientNet.from_pretrained('efficientnet-b3')
+        self.net = EfficientNet.from_pretrained('efficientnet-b4')
         num_feat = self.net._fc.in_features
         self._fc = nn.Linear(num_feat, num_classes)
          
@@ -75,10 +75,12 @@ class resnet50(nn.Module):
         super().__init__()
 
         self.net = models.resnet50(pretrained=True)
-        self.net.classifier = nn.Sequential(
-               nn.Linear(2048, 128),
-               nn.ReLU(inplace=True),
-               nn.Linear(128, num_classes))
+
+        for param in self.net.parameters():
+            param.requires_grad = False   
+
+        num_feat = self.net.fc.in_features
+        self.net.fc = nn.Linear(num_feat, num_classes)
 
     def forward(self, x):
         return self.net(x)
