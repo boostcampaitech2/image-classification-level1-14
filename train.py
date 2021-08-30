@@ -187,7 +187,6 @@ def train(data_dir, model_dir, args):
             mask_label = mask_label.to(device)
             gender_label = gender_label.to(device)
             age_label = age_label.to(device)
-            labels = encode_multi_class(mask_label, gender_label, age_label)
             figure = None
 
             optimizer.zero_grad()
@@ -226,6 +225,8 @@ def train(data_dir, model_dir, args):
                 loss = loss_mask + loss_gender + loss_age
 
             else:
+                labels = encode_multi_class(
+                    mask_label, gender_label, age_label)
                 outs = model(inputs)
 
                 loss_mask = criterion(outs['mask'], mask_label)
