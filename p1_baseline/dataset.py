@@ -328,7 +328,7 @@ class TestDataset(Dataset):
 def get_fixed_labeled_csv():
     df = pd.read_csv("/opt/ml/input/data/train/train.csv")
 
-    # id_overlap_error = ["003397"]
+    id_overlap_error = ["003397"]
     gender_labeling_error = ['006359', '006360',
                              '006361', '006362', '006363', '006364']
     mask_labeling_error = ['000020', '004418', '005227']
@@ -344,9 +344,9 @@ def get_fixed_labeled_csv():
         _age = df['age'].iloc[idx]
         _id = df['id'].iloc[idx]
 
-        # if _id in id_overlap_error:
-        #     _id = '%06d' % (id_new)
-        #     id_new += 1
+        if _id in id_overlap_error:
+            _id = '%06d' % (id_new)
+            id_new += 1
 
         if _id in gender_labeling_error:
             if _gender == "male":
@@ -355,7 +355,7 @@ def get_fixed_labeled_csv():
                 _gender = 'male'
 
         # 각 dir의 이미지들을 iterative 하게 가져옵니다.
-        for img_name in Path(f"/opt/ml/input/data/train/new_imgs/{_path}").iterdir():
+        for img_name in Path(f"/opt/ml/input/data/train/images/{_path}").iterdir():
             img_stem = img_name.stem  # 해당 파일의 파일명만을 가져옵니다. 확장자 제외.
             if not img_stem.startswith('._'):  # avoid hidden files
                 if _id in mask_labeling_error:
@@ -427,6 +427,7 @@ def get_cropped_and_fixed_images():
 
             img_fixed_dir = '_'.join(
                 [df.iloc[index].id, df.iloc[index].gender, "Asian", str(df.iloc[index].age)])
+            
             basename = os.path.basename(path)
             ext = os.path.splitext(basename)[1].lower()
 

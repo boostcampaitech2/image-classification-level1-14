@@ -255,14 +255,12 @@ def train(data_dir, model_dir, args):
             scheduler.step(val_loss)
             print()
 
-
             if early_stop_count == 5:
                 break
                 
     logger.flush()
     os.system(f"tensorboard --logdir {save_dir}")
     os.system(f"python3 code/p1_baseline/inference.py --model_dir {save_dir} --model {args.model}")
-
 
 
 if __name__ == '__main__':
@@ -293,14 +291,13 @@ if __name__ == '__main__':
     parser.add_argument('--name', default='exp', help='model save at {SM_MODEL_DIR}/{name}')
 
     if os.path.isfile("/opt/ml/code/labeled_data.csv"): 
-        if os.path.isdir("/opt/ml/input/data/train/new_imgs"):
-            print("You have to make error-fixed csv!!")
-            # get_fixed_labeled_csv()
-        else:
+        if not os.path.isdir("/opt/ml/input/data/train/new_imgs"):
             print("Saving Cropped images")
             get_cropped_and_fixed_images()
-            
 
+        print("You have to make error-fixed csv!!")
+        get_fixed_labeled_csv()
+            
     # Container environment
     parser.add_argument('--data_dir', type=str, default=os.environ.get('SM_CHANNEL_TRAIN', '/opt/ml/input/data/train/new_imgs'))
     parser.add_argument('--model_dir', type=str, default=os.environ.get('SM_MODEL_DIR', '/opt/ml/code/p1_baseline/model'))
