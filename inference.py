@@ -7,12 +7,13 @@ import torch
 from torch.utils.data import DataLoader
 
 from dataset import TestDataset, MaskBaseDataset
+from dataset import encode_multi_class
 
 
-def load_model(saved_model, num_classes, device):
+def load_model(saved_model, num_classes_mask,num_classes_gender,num_classes_age, device):
     model_cls = getattr(import_module("model"), args.model)
     model = model_cls(
-        num_classes=num_classes
+        num_classes_mask=num_classes_mask, num_classes_gender=num_classes_gender, num_classes_age=num_classes_age
     )
 
     # tarpath = os.path.join(saved_model, 'best.tar.gz')
@@ -32,8 +33,12 @@ def inference(data_dir, model_dir, output_dir, args):
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
 
-    num_classes = MaskBaseDataset.num_classes  # 18
-    model = load_model(model_dir, num_classes, device).to(device)
+    num_classes_mask = 3
+    num_classes_gender = 2
+    num_classes_age = 3
+
+    model = load_model(model_dir, num_classes_mask,num_classes_gender,num_classes_age,device).to(device)
+    model = torch.nn.DataParallel(model)
     print(f"model dir :  {model_dir}")
     model.eval()
 
@@ -55,10 +60,15 @@ def inference(data_dir, model_dir, output_dir, args):
     print("Calculating inference results..")
     preds = []
     with torch.no_grad():
-        for idx, images in enumerate(loader):
-            images = images.to(device)
-            pred = model(images)
-            pred = pred.argmax(dim=-1)
+        for inputs in loader:
+            inputs = inputs.to(device)
+
+            outs = model(inputs) 
+            mask_preds = torch.argmax(outs['mask'], dim=-1)
+            gender_preds = torch.argmax(outs['gender'], dim=-1)
+            age_preds = torch.argmax(outs['age'], dim=-1)
+            pred = encode_multi_class(mask_preds, gender_preds, age_preds)
+
             preds.extend(pred.cpu().numpy())
 
     info['ans'] = preds
@@ -77,7 +87,7 @@ if __name__ == '__main__':
 
     # Container environment
     parser.add_argument('--data_dir', type=str, default=os.environ.get('SM_CHANNEL_EVAL', '/opt/ml/input/data/eval'))
-    parser.add_argument('--model_dir', type=str, default=os.environ.get('SM_CHANNEL_MODEL', '/opt/ml/code/p1_baseline/model/exp4'))
+    parser.add_argument('--model_dir', type=str, default=os.environ.get('SM_CHANNEL_MODEL', '/opt/ml/code/p1_baseline/model/exp16'))
     parser.add_argument('--output_dir', type=str, default=os.environ.get('SM_OUTPUT_DATA_DIR', '/opt/ml/code/p1_baseline/output'))
 
     args = parser.parse_args()
