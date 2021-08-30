@@ -238,26 +238,31 @@ def train(data_dir, model_dir, args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
+
+
+
     from dotenv import load_dotenv
     import os
     load_dotenv(verbose=True)
 
+    from ConfigParser import seed, epochs, dataset, augmentation, resize, batch_size, valid_batch_size, model, optimizer, lr, val_ratio, criterion, lr_decay_step, log_interval, name
+
     # Data and model checkpoints directories
-    parser.add_argument('--seed', type=int, default=42, help='random seed (default: 42)')
-    parser.add_argument('--epochs', type=int, default=1, help='number of epochs to train (default: 1)')
-    parser.add_argument('--dataset', type=str, default='MaskBaseDataset', help='dataset augmentation type (default: MaskBaseDataset)')
-    parser.add_argument('--augmentation', type=str, default='BaseAugmentation', help='data augmentation type (default: BaseAugmentation)')
-    parser.add_argument("--resize", nargs="+", type=list, default=[128, 96], help='resize size for image when training')
-    parser.add_argument('--batch_size', type=int, default=64, help='input batch size for training (default: 64)')
-    parser.add_argument('--valid_batch_size', type=int, default=1000, help='input batch size for validing (default: 1000)')
-    parser.add_argument('--model', type=str, default='BaseModel', help='model type (default: BaseModel)')
-    parser.add_argument('--optimizer', type=str, default='SGD', help='optimizer type (default: SGD)')
-    parser.add_argument('--lr', type=float, default=1e-3, help='learning rate (default: 1e-3)')
-    parser.add_argument('--val_ratio', type=float, default=0.2, help='ratio for validaton (default: 0.2)')
-    parser.add_argument('--criterion', type=str, default='cross_entropy', help='criterion type (default: cross_entropy)')
-    parser.add_argument('--lr_decay_step', type=int, default=20, help='learning rate scheduler deacy step (default: 20)')
-    parser.add_argument('--log_interval', type=int, default=20, help='how many batches to wait before logging training status')
-    parser.add_argument('--name', default='exp', help='model save at {SM_MODEL_DIR}/{name}')
+    parser.add_argument('--seed', type=int, default=seed,   help='random seed (config: ' + str(seed) + ')')
+    parser.add_argument('--epochs', type=int, default=epochs,   help='number of epochs to train (config: ' + str(epochs) + ')')
+    parser.add_argument('--dataset', type=str, default=dataset,   help='dataset augmentation type (config: ' + dataset + ')')
+    parser.add_argument('--augmentation', type=str, default=augmentation,   help='data augmentation type (config: ' + augmentation + ')')
+    parser.add_argument("--resize", nargs="+", type=list, default=resize,   help='resize size for image when training (config : ' + str(resize) + ')')
+    parser.add_argument('--batch_size', type=int, default=batch_size,   help='input batch size for training (config: ' + str(batch_size) + ')')
+    parser.add_argument('--valid_batch_size', type=int, default=valid_batch_size,   help='input batch size for validing (config: ' + str(valid_batch_size)  + ')')
+    parser.add_argument('--model', type=str, default=model,   help='model type (config: ' + model + ')')
+    parser.add_argument('--optimizer', type=str, default=optimizer,   help='optimizer type (config: ' + optimizer + ')')
+    parser.add_argument('--lr', type=float, default=lr,   help='learning rate (config: ' + str(lr) + ')')
+    parser.add_argument('--val_ratio', type=float, default=val_ratio,   help='ratio for validaton (config: ' + str(lr) + ')')
+    parser.add_argument('--criterion', type=str, default=criterion,   help='criterion type (config: ' + str(val_ratio) + ')')
+    parser.add_argument('--lr_decay_step', type=int, default=lr_decay_step,   help='learning rate scheduler deacy step (config: ' +str(lr_decay_step)  + ')')
+    parser.add_argument('--log_interval', type=int, default=log_interval,   help='how many batches to wait before logging training status (config: '+str(log_interval)+')')
+    parser.add_argument('--name', default=name,   help='model save at {SM_MODEL_DIR}/{name}')
 
     # Container environment
     parser.add_argument('--data_dir', type=str, default=os.environ.get('SM_CHANNEL_TRAIN', '/opt/ml/input/data/train/images'))
