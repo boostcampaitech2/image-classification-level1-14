@@ -188,6 +188,7 @@ def train(data_dir, model_dir, args):
             gender_label = gender_label.to(device)
             age_label = age_label.to(device)
             labels = encode_multi_class(mask_label, gender_label, age_label)
+            figure = None
 
             optimizer.zero_grad()
 
@@ -207,6 +208,12 @@ def train(data_dir, model_dir, args):
                                                             :, bbx1:bbx2, bby1:bby2]
                 lam = 1 - ((bbx2 - bbx1) * (bby2 - bby1) /
                            (inputs.size()[-1] * inputs.size()[-2]))
+                if lam > 0.5:
+                    labels = encode_multi_class(
+                        mask_label_a, gender_label_a, age_label_a)
+                else:
+                    labels = encode_multi_class(
+                        mask_label_b, gender_label_b, age_label_b)
 
                 outs = model(inputs)
 
@@ -230,6 +237,15 @@ def train(data_dir, model_dir, args):
             gender_preds = torch.argmax(outs['gender'], dim=-1)
             age_preds = torch.argmax(outs['age'], dim=-1)
             preds = encode_multi_class(mask_preds, gender_preds, age_preds)
+
+            if figure is None:
+                inputs_np = torch.clone(inputs[:16]).detach(
+                ).cpu().permute(0, 2, 3, 1).numpy()
+                inputs_np = dataset_module.denormalize_image(
+                    inputs_np, dataset.mean, dataset.std)
+                figure = grid_image(
+                    inputs_np, labels, preds, n=16, shuffle=False
+                )
 
             loss.backward(retain_graph=True)
             optimizer.step()
@@ -263,7 +279,6 @@ def train(data_dir, model_dir, args):
             val_acc_items = []
             epoch_f1 = 0
             n_iter = 0
-            figure = None
 
             for val_batch in val_loader:
                 inputs, mask_label, gender_label, age_label = val_batch
@@ -292,14 +307,6 @@ def train(data_dir, model_dir, args):
                 epoch_f1 += f1_score(labels.cpu().numpy(),
                                      preds.cpu().numpy(), average='macro')
                 n_iter += 1
-                if figure is None:
-                    inputs_np = torch.clone(inputs).detach(
-                    ).cpu().permute(0, 2, 3, 1).numpy()
-                    inputs_np = dataset_module.denormalize_image(
-                        inputs_np, dataset.mean, dataset.std)
-                    figure = grid_image(
-                        inputs_np, labels, preds, n=16, shuffle=False
-                    )
 
                 for i in range(args.valid_batch_size):
                     test_table.add_data(labels[i], preds[i])
@@ -352,7 +359,7 @@ if __name__ == '__main__':
                         help='number of epochs to train (default: 30)')
     parser.add_argument('--dataset', type=str, default='MaskSplitByProfileDataset',
                         help='dataset augmentation type (default: MaskBaseDataset)')
-    parser.add_argument('--augmentation', type=str, default='CustomAugmentation',
+    parser.add_argument('--augmentation', type=str, default='BaseAugmentation',
                         help='data augmentation type (default: CustomAugmentation)')
     parser.add_argument("--resize", nargs="+", type=list,
                         default=[128, 128], help='resize size for image when training')
@@ -398,7 +405,7 @@ if __name__ == '__main__':
     parser.add_argument('--data_dir', type=str, default=os.environ.get(
         'SM_CHANNEL_TRAIN', '/opt/ml/input/data/train/new_imgs'))
     parser.add_argument('--model_dir', type=str, default=os.environ.get(
-        'SM_MODEL_DIR', '/opt/ml/code/p1_baseline/model'))
+        'SM_MODEL_DIR', '/opt/ml/image-classification-level1-14'))
 
     args = parser.parse_args()
     print(args)
