@@ -15,7 +15,7 @@ from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from dataset import MaskBaseDataset
+from dataset import MaskBaseDataset, MaskSplitByProfileDataset
 
 from dataset import get_fixed_labeled_csv, get_cropped_and_fixed_images
 from loss import create_criterion
@@ -37,12 +37,12 @@ def get_lr(optimizer):
         return param_group['lr']
 
 
-def grid_image(np_images, gts, preds, n=16, shuffle=False):
+def grid_image(np_images, gts, preds, n=32, shuffle=False):
     batch_size = np_images.shape[0]
     assert n <= batch_size
 
     choices = random.choices(range(batch_size), k=n) if shuffle else list(range(n))
-    figure = plt.figure(figsize=(12, 18 + 2))  # cautions: hardcoded, 이미지 크기에 따라 figsize 를 조정해야 할 수 있습니다. T.T
+    figure = plt.figure(figsize=(15, 20))  # cautions: hardcoded, 이미지 크기에 따라 figsize 를 조정해야 할 수 있습니다. T.T
     plt.subplots_adjust(top=0.8)               # cautions: hardcoded, 이미지 크기에 따라 top 를 조정해야 할 수 있습니다. T.T
     n_grid = np.ceil(n ** 0.5)
     tasks = ["mask", "gender", "age"]
@@ -51,8 +51,10 @@ def grid_image(np_images, gts, preds, n=16, shuffle=False):
         pred = preds[choice].item()
         image = np_images[choice]
         # title = f"gt: {gt}, pred: {pred}"
+
         gt_decoded_labels = MaskBaseDataset.decode_multi_class(gt)
         pred_decoded_labels = MaskBaseDataset.decode_multi_class(pred)
+        
         title = "\n".join([
             f"{task} - gt: {gt_label}, pred: {pred_label}"
             for gt_label, pred_label, task
@@ -90,7 +92,6 @@ def train(data_dir, model_dir, args):
     seed_everything(args.seed)
 
     save_dir = increment_path(os.path.join(model_dir, args.name))
-
     # -- settings
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
@@ -113,6 +114,7 @@ def train(data_dir, model_dir, args):
 
     # -- data_loader
     train_set, val_set = dataset.split_dataset()
+    
 
     train_loader = DataLoader(
         train_set,
@@ -120,7 +122,7 @@ def train(data_dir, model_dir, args):
         num_workers=multiprocessing.cpu_count()//2,
         shuffle=True,
         pin_memory=use_cuda,
-        drop_last=True,
+        # drop_last=True,
     )
 
     val_loader = DataLoader(
@@ -129,7 +131,7 @@ def train(data_dir, model_dir, args):
         num_workers=multiprocessing.cpu_count()//2,
         shuffle=False,
         pin_memory=use_cuda,
-        drop_last=True,
+        # drop_last=True,
     )
 
     # -- model
@@ -151,9 +153,10 @@ def train(data_dir, model_dir, args):
     print("*"*100)
     print(f"optimizer , {optimizer}")
     # scheduler = StepLR(optimizer, args.lr_decay_step, gamma=0.5)
-    scheduler = ReduceLROnPlateau(optimizer,'min',factor=0.1, patience=10)
+    scheduler = ReduceLROnPlateau(optimizer,'min',factor=0.1, patience=5)
 
     # -- logging
+
     logger = SummaryWriter(log_dir=save_dir)
     with open(os.path.join(save_dir, 'config.json'), 'w', encoding='utf-8') as f:
         json.dump(vars(args), f, ensure_ascii=False, indent=4)
@@ -192,11 +195,9 @@ def train(data_dir, model_dir, args):
                 )
                 logger.add_scalar("Train/loss", train_loss, epoch * len(train_loader) + idx)
                 logger.add_scalar("Train/accuracy", train_acc, epoch * len(train_loader) + idx)
-
-                scheduler.step(loss_value)
+                
                 loss_value = 0
                 matches = 0
-
         
 
         # val loop
@@ -227,7 +228,7 @@ def train(data_dir, model_dir, args):
                     inputs_np = torch.clone(inputs).detach().cpu().permute(0, 2, 3, 1).numpy()
                     inputs_np = dataset_module.denormalize_image(inputs_np, dataset.mean, dataset.std)
                     figure = grid_image(
-                        inputs_np, labels, preds, n=16, shuffle=args.dataset != "MaskSplitByProfileDataset"
+                        inputs_np, labels, preds, n=32, shuffle=args.dataset != "MaskSplitByProfileDataset"
                     )
 
             epoch_f1 = epoch_f1/n_iter
@@ -251,10 +252,17 @@ def train(data_dir, model_dir, args):
             logger.add_scalar("Val/loss", val_loss, epoch)
             logger.add_scalar("Val/accuracy", val_acc, epoch)
             logger.add_figure("results", figure, epoch)
+            scheduler.step(val_loss)
             print()
-            
-            if early_stop_count == 7:
+
+
+            if early_stop_count == 5:
                 break
+                
+    logger.flush()
+    os.system(f"tensorboard --logdir {save_dir}")
+    os.system(f"python3 code/p1_baseline/inference.py --model_dir {save_dir} --model {args.model}")
+
 
 
 if __name__ == '__main__':
@@ -270,11 +278,11 @@ if __name__ == '__main__':
     # Data and model checkpoints directories
     parser.add_argument('--seed', type=int, default=42, help='random seed (default: 42)')
     parser.add_argument('--epochs', type=int, default=30, help='number of epochs to train (default: 30)')
-    parser.add_argument('--dataset', type=str, default='MaskBaseDataset', help='dataset augmentation type (default: MaskBaseDataset)')
+    parser.add_argument('--dataset', type=str, default='MaskSplitByProfileDataset', help='dataset augmentation type (default: MaskBaseDataset)')
     parser.add_argument('--augmentation', type=str, default='CustomAugmentation', help='data augmentation type (default: CustomAugmentation)')
     parser.add_argument("--resize", nargs="+", type=list, default=[128,96], help='resize size for image when training')
     parser.add_argument('--batch_size', type=int, default=64, help='input batch size for training (default: 64)')
-    parser.add_argument('--valid_batch_size', type=int, default=16, help='input batch size for validing (default: 16)')
+    parser.add_argument('--valid_batch_size', type=int, default=64, help='input batch size for validing (default: 16)')
     parser.add_argument('--model', type=str, default='resnet50', help='model type (default: resnet50)')
     parser.add_argument('--optimizer', type=str, default='Adam', help='optimizer type (default: Adam)')
     parser.add_argument('--lr', type=float, default=1e-3, help='learning rate (default: 1e-3)')
@@ -286,10 +294,10 @@ if __name__ == '__main__':
 
     if os.path.isfile("/opt/ml/code/labeled_data.csv"): 
         if os.path.isdir("/opt/ml/input/data/train/new_imgs"):
-            print("Saving Cropped images")
-            get_fixed_labeled_csv()
-        else:
             print("You have to make error-fixed csv!!")
+            # get_fixed_labeled_csv()
+        else:
+            print("Saving Cropped images")
             get_cropped_and_fixed_images()
             
 
@@ -304,3 +312,5 @@ if __name__ == '__main__':
     model_dir = args.model_dir
 
     train(data_dir, model_dir, args)
+
+    # tensorboard --logdir "/opt/ml/code/p1_baseline/model/exp13"

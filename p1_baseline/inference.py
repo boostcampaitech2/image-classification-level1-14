@@ -34,6 +34,7 @@ def inference(data_dir, model_dir, output_dir, args):
 
     num_classes = MaskBaseDataset.num_classes  # 18
     model = load_model(model_dir, num_classes, device).to(device)
+    print(f"model dir :  {model_dir}")
     model.eval()
 
     img_root = os.path.join(data_dir, 'images')
@@ -45,7 +46,7 @@ def inference(data_dir, model_dir, output_dir, args):
     loader = torch.utils.data.DataLoader(
         dataset,
         batch_size=args.batch_size,
-        num_workers=2,
+        num_workers=4,
         shuffle=False,
         pin_memory=use_cuda,
         drop_last=False,
@@ -70,13 +71,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     # Data and model checkpoints directories
-    parser.add_argument('--batch_size', type=int, default=8, help='input batch size for validing (default: 8)')
+    parser.add_argument('--batch_size', type=int, default=64, help='input batch size for validing (default: 8)')
     parser.add_argument('--resize', type=tuple, default=(128,96), help='resize size for image when you trained (default: (128,96))')
     parser.add_argument('--model', type=str, default='resnet50', help='model type (default: resnet50)')
 
     # Container environment
     parser.add_argument('--data_dir', type=str, default=os.environ.get('SM_CHANNEL_EVAL', '/opt/ml/input/data/eval'))
-    parser.add_argument('--model_dir', type=str, default=os.environ.get('SM_CHANNEL_MODEL', '/opt/ml/code/p1_baseline/model/exp12'))
+    parser.add_argument('--model_dir', type=str, default=os.environ.get('SM_CHANNEL_MODEL', '/opt/ml/code/p1_baseline/model/exp4'))
     parser.add_argument('--output_dir', type=str, default=os.environ.get('SM_OUTPUT_DATA_DIR', '/opt/ml/code/p1_baseline/output'))
 
     args = parser.parse_args()

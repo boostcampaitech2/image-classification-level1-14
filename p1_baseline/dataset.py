@@ -13,6 +13,9 @@ from torch.utils.data import Dataset, Subset, random_split
 from torchvision import transforms
 from torchvision.transforms import *
 
+from albumentations import *
+from albumentations.pytorch import ToTensorV2
+
 import matplotlib.pyplot as plt
 from facenet_pytorch import MTCNN
 import os, cv2
@@ -30,14 +33,14 @@ def is_image_file(filename):
 
 class BaseAugmentation:
     def __init__(self, resize, mean, std, **args):
-        self.transform = transforms.Compose([
-            Resize(resize, Image.BILINEAR),
-            ToTensor(),
-            Normalize(mean=mean, std=std),
+        self.transform = Compose([
+            Resize(resize[0],resize[1]),
+            Normalize(mean=mean, std=std, max_pixel_value=255.0, p=1.0),
+            ToTensorV2(p=1.0)
         ])
 
     def __call__(self, image):
-        return self.transform(image)
+        return self.transform(image=np.array(image))['image']
 
 
 class AddGaussianNoise(object):
@@ -59,16 +62,16 @@ class AddGaussianNoise(object):
 
 class CustomAugmentation:
     def __init__(self, resize, mean, std, **args):
-        self.transform = transforms.Compose([
-            Resize(resize, Image.BILINEAR),
-            ColorJitter(brightness=(0.2, 2),hue=(-0.3, 0.3)),
-            ToTensor(),
-            Normalize(mean=mean, std=std),
-            AddGaussianNoise()
+        self.transform = Compose([
+            Resize(resize[0],resize[1]),
+            ColorJitter(brightness=(1, 2)),
+            Normalize(mean=mean, std=std, max_pixel_value=255.0, p=1.0),
+            ToTensorV2(p=1.0)
+            # AddGaussianNoise()
         ])
 
     def __call__(self, image):
-        return self.transform(image)
+        return self.transform(image=np.array(image))['image']
 
 
 class MaskLabels(int, Enum):
@@ -305,17 +308,17 @@ class MaskSplitByProfileDataset(MaskBaseDataset):
 class TestDataset(Dataset):
     def __init__(self, img_paths, resize, mean=(0.548, 0.504, 0.479), std=(0.237, 0.247, 0.246)):
         self.img_paths = img_paths
-        self.transform = transforms.Compose([
-            Resize(resize, Image.BILINEAR),
-            ToTensor(),
-            Normalize(mean=mean, std=std),
-        ])
+        self.transform = Compose([
+            Resize(resize[0],resize[1]),
+            Normalize(mean=mean, std=std,max_pixel_value=255.0, p=1.0),
+            ToTensorV2(p=1.0),
+        ], p=1.0)
 
     def __getitem__(self, index):
         image = Image.open(self.img_paths[index])
 
         if self.transform:
-            image = self.transform(image)
+            image = self.transform(image=np.array(image))['image']
         return image
 
     def __len__(self):
@@ -325,7 +328,7 @@ class TestDataset(Dataset):
 def get_fixed_labeled_csv():
     df = pd.read_csv("/opt/ml/input/data/train/train.csv")
 
-    id_overlap_error = ["003397"]
+    # id_overlap_error = ["003397"]
     gender_labeling_error = ['006359', '006360',
                              '006361', '006362', '006363', '006364']
     mask_labeling_error = ['000020', '004418', '005227']
@@ -341,9 +344,9 @@ def get_fixed_labeled_csv():
         _age = df['age'].iloc[idx]
         _id = df['id'].iloc[idx]
 
-        if _id in id_overlap_error:
-            _id = '%06d' % (id_new)
-            id_new += 1
+        # if _id in id_overlap_error:
+        #     _id = '%06d' % (id_new)
+        #     id_new += 1
 
         if _id in gender_labeling_error:
             if _gender == "male":
@@ -352,7 +355,7 @@ def get_fixed_labeled_csv():
                 _gender = 'male'
 
         # 각 dir의 이미지들을 iterative 하게 가져옵니다.
-        for img_name in Path(f"/opt/ml/input/data/train/images/{_path}").iterdir():
+        for img_name in Path(f"/opt/ml/input/data/train/new_imgs/{_path}").iterdir():
             img_stem = img_name.stem  # 해당 파일의 파일명만을 가져옵니다. 확장자 제외.
             if not img_stem.startswith('._'):  # avoid hidden files
                 if _id in mask_labeling_error:
@@ -384,6 +387,8 @@ def get_fixed_labeled_csv():
 def get_cropped_and_fixed_images():
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     mtcnn = MTCNN(keep_all=True, device=device)
+
+    os.makedirs('/opt/ml/input/data/train/new_imgs', exist_ok=True)
     new_img_dir = '/opt/ml/input/data/train/new_imgs'
     df = pd.read_csv("/opt/ml/code/labeled_data.csv")
 
