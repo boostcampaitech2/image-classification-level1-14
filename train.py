@@ -16,8 +16,8 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 from dataset import MaskBaseDataset
-
 from dataset import get_fixed_labeled_csv, get_cropped_and_fixed_images
+from dataset import encode_multi_class
 from loss import create_criterion
 
 from sklearn.metrics import f1_score
@@ -108,7 +108,6 @@ def train(data_dir, model_dir, args):
     dataset = dataset_module(
         data_dir=data_dir,
     )
-    num_classes = dataset.num_classes  # 18
 
     # -- augmentation
     transform_module = getattr(import_module(
@@ -142,10 +141,13 @@ def train(data_dir, model_dir, args):
     )
 
     # -- model
+    num_classes_mask = 3
+    num_classes_gender = 2
+    num_classes_age = 3
     model_module = getattr(import_module(
         "model"), args.model)  # default: BaseModel
     model = model_module(
-        num_classes=num_classes
+        num_classes_mask=num_classes_mask, num_classes_gender=num_classes_gender, num_classes_age=num_classes_age
     ).to(device)
     model = torch.nn.DataParallel(model)
 
@@ -182,16 +184,26 @@ def train(data_dir, model_dir, args):
         test_table = wandb.Table(columns=columns)
 
         for idx, train_batch in enumerate(train_loader):
-            inputs, labels = train_batch
+            inputs, mask_label, gender_label, age_label = train_batch
+
             inputs = inputs.to(device)
-            labels = labels.to(device)
+            mask_label = mask_label.to(device)
+            gender_label = gender_label.to(device)
+            age_label = age_label.to(device)
+            labels = encode_multi_class(mask_label, gender_label, age_label)
 
             optimizer.zero_grad()
-
             outs = model(inputs)
-            preds = torch.argmax(outs, dim=-1)
-            loss = criterion(outs, labels)
 
+            mask_preds = torch.argmax(outs['mask'], dim=-1)
+            gender_preds = torch.argmax(outs['gender'], dim=-1)
+            age_preds = torch.argmax(outs['age'], dim=-1)
+            preds = encode_multi_class(mask_preds, gender_preds, age_preds)
+
+            loss_mask = criterion(outs['mask'], mask_label)
+            loss_gender = criterion(outs['gender'], gender_label)
+            loss_age = criterion(outs['age'], age_label)
+            loss = loss_mask + loss_gender + loss_age
             loss.backward()
             optimizer.step()
 
@@ -227,14 +239,25 @@ def train(data_dir, model_dir, args):
             figure = None
 
             for val_batch in val_loader:
-                inputs, labels = val_batch
+                inputs, mask_label, gender_label, age_label = val_batch
                 inputs = inputs.to(device)
-                labels = labels.to(device)
+                mask_label = mask_label.to(device)
+                gender_label = gender_label.to(device)
+                age_label = age_label.to(device)
+                labels = encode_multi_class(
+                    mask_label, gender_label, age_label)
 
                 outs = model(inputs)
-                preds = torch.argmax(outs, dim=-1)
 
-                loss_item = criterion(outs, labels).item()
+                mask_preds = torch.argmax(outs['mask'], dim=-1)
+                gender_preds = torch.argmax(outs['gender'], dim=-1)
+                age_preds = torch.argmax(outs['age'], dim=-1)
+                preds = encode_multi_class(mask_preds, gender_preds, age_preds)
+
+                loss_mask = criterion(outs['mask'], mask_label)
+                loss_gender = criterion(outs['gender'], gender_label)
+                loss_age = criterion(outs['age'], age_label)
+                loss_item = (loss_mask + loss_gender + loss_age).item()
                 acc_item = (labels == preds).sum().item()
                 val_loss_items.append(loss_item)
                 val_acc_items.append(acc_item)

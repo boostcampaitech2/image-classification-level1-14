@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torchvision.models as models
+import timm
 
 
 class BaseModel(nn.Module):
@@ -51,3 +53,68 @@ class MyModel(nn.Module):
         2. 결과로 나온 output 을 return 해주세요
         """
         return x
+
+
+class efficient(nn.Module):
+    def __init__(self, num_classes_mask, num_classes_gender, num_classes_age):
+        super().__init__()
+        self.net = timm.create_model('efficientnet_b3', pretrained=True)
+        self.linear_mask = nn.Linear(
+            in_features=1000, out_features=num_classes_mask, bias=True)
+        self.linear_gender = nn.Linear(
+            in_features=1000, out_features=num_classes_gender, bias=True)
+        self.linear_age = nn.Linear(
+            in_features=1000, out_features=num_classes_age, bias=True)
+
+    def forward(self, x):
+        """
+        1. 위에서 정의한 모델 아키텍쳐를 forward propagation 을 진행해주세요
+        2. 결과로 나온 output 을 return 해주세요
+        """
+        x = self.net(x)
+        return {'mask': self.linear_mask(x), 'gender': self.linear_gender(x), 'age': self.linear_age(x)}
+
+
+# Custom Model Template
+class resnet50(nn.Module):
+    def __init__(self, num_classes_mask, num_classes_gender, num_classes_age):
+        super().__init__()
+
+        self.net = models.resnet50(pretrained=True)
+        self.linear_mask = nn.Linear(
+            in_features=1000, out_features=num_classes_mask, bias=True)
+        self.linear_gender = nn.Linear(
+            in_features=1000, out_features=num_classes_gender, bias=True)
+        self.linear_age = nn.Linear(
+            in_features=1000, out_features=num_classes_age, bias=True)
+
+    def forward(self, x):
+        x = self.net(x)
+        return {'mask': self.linear_mask(x), 'gender': self.linear_gender(x), 'age': self.linear_age(x)}
+
+
+# Custom Model Template
+class VGG19(nn.Module):
+    def __init__(self, num_classes_mask, num_classes_gender, num_classes_age):
+        super().__init__()
+
+        """
+        1. 위와 같이 생성자의 parameter 에 num_claases 를 포함해주세요.
+        2. 나만의 모델 아키텍쳐를 디자인 해봅니다.
+        3. 모델의 output_dimension 은 num_classes 로 설정해주세요.
+        """
+        self.net = models.vgg19_bn(pretrained=True)
+        self.linear_mask = nn.Linear(
+            in_features=1000, out_features=num_classes_mask, bias=True)
+        self.linear_gender = nn.Linear(
+            in_features=1000, out_features=num_classes_gender, bias=True)
+        self.linear_age = nn.Linear(
+            in_features=1000, out_features=num_classes_age, bias=True)
+
+    def forward(self, x):
+        """
+        1. 위에서 정의한 모델 아키텍쳐를 forward propagation 을 진행해주세요
+        2. 결과로 나온 output 을 return 해주세요
+        """
+        x = self.net(x)
+        return {'mask': self.linear_mask(x), 'gender': self.linear_gender(x), 'age': self.linear_age(x)}

@@ -114,7 +114,9 @@ class AgeLabels(int, Enum):
 
 
 class MaskBaseDataset(Dataset):
-    num_classes = 3 * 2 * 3
+    num_classes_mask = 3
+    num_classes_gender = 2
+    num_classes_age = 3
 
     _file_names = {
         "mask1": MaskLabels.MASK,
@@ -191,11 +193,9 @@ class MaskBaseDataset(Dataset):
         mask_label = self.get_mask_label(index)
         gender_label = self.get_gender_label(index)
         age_label = self.get_age_label(index)
-        multi_class_label = self.encode_multi_class(
-            mask_label, gender_label, age_label)
 
         image_transform = self.transform(image)
-        return image_transform, multi_class_label
+        return image_transform, mask_label, gender_label, age_label
 
     def __len__(self):
         return len(self.image_paths)
@@ -212,10 +212,6 @@ class MaskBaseDataset(Dataset):
     def read_image(self, index):
         image_path = self.image_paths[index]
         return Image.open(image_path).convert('RGB')
-
-    @staticmethod
-    def encode_multi_class(mask_label, gender_label, age_label) -> int:
-        return mask_label * 6 + gender_label * 3 + age_label
 
     @staticmethod
     def decode_multi_class(multi_class_label) -> Tuple[MaskLabels, GenderLabels, AgeLabels]:
@@ -246,6 +242,10 @@ class MaskBaseDataset(Dataset):
         # random split
         train_set, val_set = random_split(self, [n_train, n_val])
         return train_set, val_set
+
+
+def encode_multi_class(mask_label, gender_label, age_label) -> int:
+    return mask_label * 6 + gender_label * 3 + age_label
 
 
 class MaskSplitByProfileDataset(MaskBaseDataset):
