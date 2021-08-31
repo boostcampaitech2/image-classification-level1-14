@@ -7,4 +7,9 @@ scikit-learn~=0.24.1
 matplotlib==3.2.1
 facenet_pytorch
 tqdm
-oepncv
+opencv-python
+pretrainedmodels
+timm
+wandb
+# albumentations
+# RetinaFace

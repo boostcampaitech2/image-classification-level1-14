@@ -7,6 +7,7 @@ import random
 import re
 from importlib import import_module
 from pathlib import Path
+import wandb
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -17,7 +18,7 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 from dataset import MaskBaseDataset, MaskSplitByProfileDataset
-from dataset import get_fixed_labeled_csv
+from dataset import get_fixed_labeled_csv, rand_bbox
 
 from loss import create_criterion
 
@@ -95,7 +96,7 @@ def increment_path(path, exist_ok=False):
 
 
 def train(data_dir, model_dir, args):
-    wandb.init(project=args.wandb_ProjectName, entity=args.wandb_ID)
+    wandb.init(project='my-test-project', entity='tkdlqh2')
     seed_everything(args.seed)
     save_dir = increment_path(os.path.join(model_dir, args.name))
 
@@ -172,13 +173,13 @@ def train(data_dir, model_dir, args):
         json.dump(vars(args), f, ensure_ascii=False, indent=4)
 
     # earlystop
-    patience = 10
+    patience = 20
     counter = 0
 
     best_val_acc = 0
     best_val_f1 = 0
     best_val_loss = np.inf
-    early_stop_count = 0
+
     for epoch in range(args.epochs):
         # train loop
         model.train()
@@ -272,7 +273,7 @@ def train(data_dir, model_dir, args):
                 current_lr = get_lr(optimizer)
                 print(
                     f"Epoch[{epoch}/{args.epochs}]({idx + 1}/{len(train_loader)}) || "
-                    f"training loss {train_loss:4.4} || training accuracy {train_acc:4.2%} || training f1 {train_f1:4.2%} || lr {current_lr}"
+                    f"training loss {train_loss:4.4} || training accuracy {train_acc:4.2%} || training f1 {train_f1:4.2} || lr {current_lr}"
                 )
                 logger.add_scalar("Train/loss", train_loss,
                                   epoch * len(train_loader) + idx)
@@ -280,7 +281,8 @@ def train(data_dir, model_dir, args):
                                   epoch * len(train_loader) + idx)
                 logger.add_scalar("Train/f1", train_f1,
                                   epoch * len(train_loader) + idx)
-                # wandb.log({'Train/loss': train_loss, 'Train/accuracy': train_acc})
+                wandb.log({'Train/loss': train_loss,
+                          'Train/accuracy': train_acc})
 
                 loss_value = 0
                 matches = 0
@@ -293,11 +295,9 @@ def train(data_dir, model_dir, args):
             val_loss_items = []
             val_acc_items = []
             val_f1_items = []
-            figure = None
 
             for val_batch in val_loader:
                 inputs, mask_label, gender_label, age_label = val_batch
-
                 inputs = inputs.to(device)
                 mask_label = mask_label.to(device)
                 gender_label = gender_label.to(device)
@@ -325,19 +325,12 @@ def train(data_dir, model_dir, args):
                 val_acc_items.append(acc_item)
                 val_f1_items.append(f1_item)
 
-                epoch_f1 += f1_score(labels.cpu().numpy(),
-                                     preds.cpu().numpy(), average='macro')
-                n_iter += 1
-
-                for i in range(args.valid_batch_size):
-                    test_table.add_data(labels[i], preds[i])
-
-            epoch_f1 = epoch_f1/n_iter
             val_loss = np.sum(val_loss_items) / len(val_loader)
             val_acc = np.sum(val_acc_items) / len(val_set)
             val_f1 = np.sum(val_f1_items) / len(val_loader)
             best_val_loss = min(best_val_loss, val_loss)
-            best_f1 = max(best_val_f1, val_f1)
+            best_val_f1 = max(best_val_f1, val_f1)
+
             if val_acc > best_val_acc:
                 print(
                     f"New best model for val accuracy : {val_acc:4.2%}! saving the best model..")
@@ -369,13 +362,10 @@ def train(data_dir, model_dir, args):
             logger.add_scalar("Val/accuracy", val_acc, epoch)
             logger.add_scalar("Val/f1", val_f1, epoch)
             logger.add_figure("results", figure, epoch)
-            # wandb.log({"table_key": test_table})
-            # wandb.log(
-            #     {'Val/loss': val_loss, 'Val/accuracy': val_acc, "f1_score": epoch_f1})
-            # print()
-
-            if early_stop_count == 20:
-                break
+            wandb.log({"table_key": test_table})
+            wandb.log(
+                {'Val/loss': val_loss, 'Val/accuracy': val_acc, "f1_score": val_f1})
+            print()
 
 
 if __name__ == '__main__':
@@ -417,7 +407,10 @@ if __name__ == '__main__':
                         help='how many batches to wait before logging training status (config: '+str(log_interval)+')')
     parser.add_argument('--name', default=name,
                         help='model save at {SM_MODEL_DIR}/{name}')
-
+    parser.add_argument('--cutMix', default=False,
+                        help='Choose to use cut mix')
+    parser.add_argument('--cutMixProb', default=0.3,
+                        help='When you do cut mix, it do cut mix in this probability')
     if not os.path.isfile("/opt/ml/code/labeled_data.csv"):
         print("You have to make error-fixed csv!!")
         get_fixed_labeled_csv()
