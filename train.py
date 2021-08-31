@@ -201,8 +201,6 @@ def train(data_dir, model_dir, args):
                 loss_value = 0
                 matches = 0
 
-        scheduler.step(loss_value)
-
         # val loop
         with torch.no_grad():
             print("Calculating validation results...")
