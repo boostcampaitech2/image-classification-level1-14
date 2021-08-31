@@ -3,13 +3,23 @@ import random
 from collections import defaultdict
 from enum import Enum
 from typing import Tuple, List
+from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import torch
 from PIL import Image
 from torch.utils.data import Dataset, Subset, random_split
 from torchvision import transforms
 from torchvision.transforms import *
+
+from albumentations import *
+from albumentations.pytorch import ToTensorV2
+
+import matplotlib.pyplot as plt
+from facenet_pytorch import MTCNN
+import os, cv2
+from tqdm import tqdm
 
 IMG_EXTENSIONS = [
     ".jpg", ".JPG", ".jpeg", ".JPEG", ".png",
@@ -23,14 +33,14 @@ def is_image_file(filename):
 
 class BaseAugmentation:
     def __init__(self, resize, mean, std, **args):
-        self.transform = transforms.Compose([
-            Resize(resize, Image.BILINEAR),
-            ToTensor(),
-            Normalize(mean=mean, std=std),
+        self.transform = Compose([
+            Resize(resize[0],resize[1]),
+            Normalize(mean=mean, std=std, max_pixel_value=255.0, p=1.0),
+            ToTensorV2(p=1.0)
         ])
 
     def __call__(self, image):
-        return self.transform(image)
+        return self.transform(image=np.array(image))['image']
 
 
 class AddGaussianNoise(object):
@@ -52,17 +62,16 @@ class AddGaussianNoise(object):
 
 class CustomAugmentation:
     def __init__(self, resize, mean, std, **args):
-        self.transform = transforms.Compose([
-            CenterCrop((320, 256)),
-            Resize(resize, Image.BILINEAR),
-            ColorJitter(0.1, 0.1, 0.1, 0.1),
-            ToTensor(),
-            Normalize(mean=mean, std=std),
-            AddGaussianNoise()
+        self.transform = Compose([
+            Resize(resize[0],resize[1]),
+            ColorJitter(brightness=(1, 2)),
+            Normalize(mean=mean, std=std, max_pixel_value=255.0, p=1.0),
+            ToTensorV2(p=1.0)
+            # AddGaussianNoise()
         ])
 
     def __call__(self, image):
-        return self.transform(image)
+        return self.transform(image=np.array(image))['image']
 
 
 class MaskLabels(int, Enum):
@@ -107,7 +116,9 @@ class AgeLabels(int, Enum):
 
 
 class MaskBaseDataset(Dataset):
-    num_classes = 3 * 2 * 3
+    num_classes_mask = 3
+    num_classes_gender = 2
+    num_classes_age = 3
 
     _file_names = {
         "mask1": MaskLabels.MASK,
@@ -182,10 +193,9 @@ class MaskBaseDataset(Dataset):
         mask_label = self.get_mask_label(index)
         gender_label = self.get_gender_label(index)
         age_label = self.get_age_label(index)
-        multi_class_label = self.encode_multi_class(mask_label, gender_label, age_label)
 
         image_transform = self.transform(image)
-        return image_transform, multi_class_label
+        return image_transform, mask_label, gender_label, age_label
 
     def __len__(self):
         return len(self.image_paths)
@@ -201,11 +211,7 @@ class MaskBaseDataset(Dataset):
 
     def read_image(self, index):
         image_path = self.image_paths[index]
-        return Image.open(image_path)
-
-    @staticmethod
-    def encode_multi_class(mask_label, gender_label, age_label) -> int:
-        return mask_label * 6 + gender_label * 3 + age_label
+        return Image.open(image_path).convert('RGB')
 
     @staticmethod
     def decode_multi_class(multi_class_label) -> Tuple[MaskLabels, GenderLabels, AgeLabels]:
@@ -232,9 +238,13 @@ class MaskBaseDataset(Dataset):
         """
         n_val = int(len(self) * self.val_ratio)
         n_train = len(self) - n_val
+
+        # random split
         train_set, val_set = random_split(self, [n_train, n_val])
         return train_set, val_set
 
+def encode_multi_class(mask_label, gender_label, age_label) -> int:
+    return mask_label * 6 + gender_label * 3 + age_label
 
 class MaskSplitByProfileDataset(MaskBaseDataset):
     """
@@ -297,18 +307,135 @@ class MaskSplitByProfileDataset(MaskBaseDataset):
 class TestDataset(Dataset):
     def __init__(self, img_paths, resize, mean=(0.548, 0.504, 0.479), std=(0.237, 0.247, 0.246)):
         self.img_paths = img_paths
-        self.transform = transforms.Compose([
-            Resize(resize, Image.BILINEAR),
-            ToTensor(),
-            Normalize(mean=mean, std=std),
-        ])
+        self.transform = Compose([
+            Resize(resize[0],resize[1]),
+            Normalize(mean=mean, std=std,max_pixel_value=255.0, p=1.0),
+            ToTensorV2(p=1.0),
+        ], p=1.0)
 
     def __getitem__(self, index):
         image = Image.open(self.img_paths[index])
 
         if self.transform:
-            image = self.transform(image)
+            image = self.transform(image=np.array(image))['image']
         return image
 
     def __len__(self):
         return len(self.img_paths)
+
+
+def get_fixed_labeled_csv():
+    df = pd.read_csv("/opt/ml/input/data/train/train.csv")
+
+    id_overlap_error = ["003397"]
+    gender_labeling_error = ['006359', '006360',
+                             '006361', '006362', '006363', '006364']
+    mask_labeling_error = ['000020', '004418', '005227']
+
+    id_max = int(max(df['id']))
+    id_new = id_max+1
+
+    new_data_list = []
+
+    for idx in range(len(df)):
+        _path = df['path'].iloc[idx]  # 순서대로 가져와야 하기 때문에 iloc을 사용해 가져옵니다.
+        _gender = df['gender'].iloc[idx]
+        _age = df['age'].iloc[idx]
+        _id = df['id'].iloc[idx]
+
+        if _id in id_overlap_error:
+            _id = '%06d' % (id_new)
+            id_new += 1
+
+        if _id in gender_labeling_error:
+            if _gender == "male":
+                _gender = 'female'
+            else:
+                _gender = 'male'
+
+        # 각 dir의 이미지들을 iterative 하게 가져옵니다.
+        for img_name in Path(f"/opt/ml/input/data/train/images/{_path}").iterdir():
+            img_stem = img_name.stem  # 해당 파일의 파일명만을 가져옵니다. 확장자 제외.
+            if not img_stem.startswith('._'):  # avoid hidden files
+                if _id in mask_labeling_error:
+                    if img_stem == "incorrect_mask":
+                        img_stem = 'normal'
+                    elif img_stem == 'normal':
+                        img_stem = 'incorrect_mask'
+                new_data_list.append(
+                    [_id, _age, _gender, img_stem, img_name.__str__()])
+
+    df = pd.DataFrame(new_data_list)
+    df.columns = ['id', 'age', 'gender', 'stem', 'img_path']
+
+    df['label'] = 0  # SET SCORE
+    # AGE
+    df['label'] += ((df['age'] >= 30) & (df['age'] < 60))*1
+    df['label'] += (df['age'] >= 60)*2
+
+    # GENDER
+    df['label'] += (df['gender'] == 'female')*3
+
+    # MASK wearing condition
+    df['label'] += (df['stem'].isin(['incorrect_mask']))*6
+    df['label'] += (df['stem'].isin(['normal']))*12
+
+    df.to_csv('/opt/ml/code/labeled_data.csv', sep=',', na_rep='NaN')
+
+
+def get_cropped_and_fixed_images():
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    mtcnn = MTCNN(keep_all=True, device=device)
+
+    os.makedirs('/opt/ml/input/data/train/new_imgs', exist_ok=True)
+    new_img_dir = '/opt/ml/input/data/train/new_imgs'
+    df = pd.read_csv("/opt/ml/code/labeled_data.csv")
+
+    cnt = 0
+
+    for index in tqdm(range(len(df))):
+
+        path = df.iloc[index].img_path
+        img = cv2.imread(path)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+        # mtcnn 적용
+        boxes, probs = mtcnn.detect(img)
+
+        if not isinstance(boxes, np.ndarray):
+            # 직접 crop
+            img = img[100:400, 50:350, :]
+
+        # boexes size 확인
+        else:
+            xmin = int(boxes[0, 0])-30
+            ymin = int(boxes[0, 1])-30
+            xmax = int(boxes[0, 2])+30
+            ymax = int(boxes[0, 3])+30
+
+            if xmin < 0:
+                xmin = 0
+            if ymin < 0:
+                ymin = 0
+            if xmax > 384:
+                xmax = 384
+            if ymax > 512:
+                ymax = 512
+
+            img = img[ymin:ymax, xmin:xmax, :]
+
+            img_fixed_dir = '_'.join(
+                [df.iloc[index].id, df.iloc[index].gender, "Asian", str(df.iloc[index].age)])
+            
+            basename = os.path.basename(path)
+            ext = os.path.splitext(basename)[1].lower()
+
+        tmp = os.path.join(new_img_dir, img_fixed_dir)
+        cnt += 1
+
+        try:
+            os.mkdir(tmp)
+        except:
+            pass
+
+        plt.imsave(os.path.join(tmp, df.iloc[index].stem+ext), img)
