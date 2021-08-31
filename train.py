@@ -186,8 +186,6 @@ def train(data_dir, model_dir, args):
         loss_value = 0
         matches = 0
 
-        columns = ["guess", "truth"]
-        test_table = wandb.Table(columns=columns)
         figure = None
 
         for idx, train_batch in enumerate(train_loader):
@@ -249,8 +247,6 @@ def train(data_dir, model_dir, args):
                 mask_preds, gender_preds, age_preds)
 
             if figure is None:
-                inputs = inputs[:16, :, :, :]
-                # runtime 오류 계속 나면 여기좀 체크해주세요... 뭐가 문젠지...
                 inputs_np = torch.clone(inputs).detach(
                 ).cpu().permute(0, 2, 3, 1).numpy()
                 inputs_np = dataset_module.denormalize_image(
@@ -362,7 +358,6 @@ def train(data_dir, model_dir, args):
             logger.add_scalar("Val/accuracy", val_acc, epoch)
             logger.add_scalar("Val/f1", val_f1, epoch)
             logger.add_figure("results", figure, epoch)
-            wandb.log({"table_key": test_table})
             wandb.log(
                 {'Val/loss': val_loss, 'Val/accuracy': val_acc, "f1_score": val_f1})
             print()
@@ -407,7 +402,7 @@ if __name__ == '__main__':
                         help='how many batches to wait before logging training status (config: '+str(log_interval)+')')
     parser.add_argument('--name', default=name,
                         help='model save at {SM_MODEL_DIR}/{name}')
-    parser.add_argument('--cutMix', default=False,
+    parser.add_argument('--cutMix', default=True,
                         help='Choose to use cut mix')
     parser.add_argument('--cutMixProb', default=0.3,
                         help='When you do cut mix, it do cut mix in this probability')
