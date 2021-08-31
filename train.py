@@ -180,6 +180,7 @@ def train(data_dir, model_dir, args):
 
         columns = ["guess", "truth"]
         test_table = wandb.Table(columns=columns)
+        figure = None
 
         for idx, train_batch in enumerate(train_loader):
             inputs, mask_label, gender_label, age_label = train_batch
@@ -187,7 +188,6 @@ def train(data_dir, model_dir, args):
             mask_label = mask_label.to(device)
             gender_label = gender_label.to(device)
             age_label = age_label.to(device)
-            figure = None
 
             optimizer.zero_grad()
 
@@ -240,7 +240,9 @@ def train(data_dir, model_dir, args):
             preds = encode_multi_class(mask_preds, gender_preds, age_preds)
 
             if figure is None:
-                inputs_np = torch.clone(inputs[:16]).detach(
+                inputs = inputs[:16, :, :, :]
+                # runtime 오류 계속 나면 여기좀 체크해주세요... 뭐가 문젠지...
+                inputs_np = torch.clone(inputs).detach(
                 ).cpu().permute(0, 2, 3, 1).numpy()
                 inputs_np = dataset_module.denormalize_image(
                     inputs_np, dataset.mean, dataset.std)
