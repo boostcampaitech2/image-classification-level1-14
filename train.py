@@ -12,8 +12,7 @@ import wandb
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-
-from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau, CosineAnnealingLR
+from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
@@ -152,7 +151,10 @@ def train(data_dir, model_dir, args):
     model_module = getattr(import_module(
         "model"), args.model)  # default: BaseModel
     model = model_module(
-        num_classes_mask=num_classes_mask, num_classes_gender=num_classes_gender, num_classes_age=num_classes_age
+        model_name=model_name,
+        num_classes_mask=num_classes_mask,
+        num_classes_gender=num_classes_gender,
+        num_classes_age=num_classes_age
     ).to(device)
     model = torch.nn.DataParallel(model)
 
@@ -311,7 +313,6 @@ def train(data_dir, model_dir, args):
                 loss_mask = criterion(outs['mask'], mask_label)
                 loss_gender = criterion(outs['gender'], gender_label)
                 loss_age = criterion(outs['age'], age_label)
-
                 loss_item = (loss_mask + loss_gender + loss_age).item()
                 acc_item = (labels == preds).sum().item()
                 f1_item = f1_score(labels.cpu().detach().numpy().tolist(

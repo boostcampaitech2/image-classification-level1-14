@@ -6,21 +6,23 @@ image-classification-level1-14 created by GitHub Classroom
 * 아래를 복붙하고 변경한 뒤 train.py으로 실행
 ```
 [arg]
-seed = 2142
-epochs = 1
+seed = 2141
+epochs = 5
 dataset = MaskBaseDataset
 augmentation = BaseAugmentation
 resize = 128, 96
 batch_size = 64
 valid_batch_size = 1000
-model = BaseModel
-optimizer = SGD
+model = MyModel
+optimizer = Adam
 lr = 1e-3
 val_ratio = 0.2
 criterion = cross_entropy
 lr_decay_step = 20
 log_interval = 20
 name = exp
+model_name = efficientnet_b4
+pretrained = True
 ```
 
 ## branch info
