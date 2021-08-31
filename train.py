@@ -15,7 +15,7 @@ import torch
 from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from dataset import MaskBaseDataset, MaskSplitByProfileDataset
-# from dataset import get_fixed_labeled_csv, get_cropped_and_fixed_images
+from dataset import get_fixed_labeled_csv, get_cropped_and_fixed_images
 from dataset import encode_multi_class
 
 from loss import create_criterion
