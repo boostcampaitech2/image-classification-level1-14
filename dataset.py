@@ -16,11 +16,6 @@ from torchvision.transforms import *
 from albumentations import *
 from albumentations.pytorch import ToTensorV2
 
-import matplotlib.pyplot as plt
-from facenet_pytorch import MTCNN
-import os
-import cv2
-from tqdm import tqdm
 import csv
 
 IMG_EXTENSIONS = [
