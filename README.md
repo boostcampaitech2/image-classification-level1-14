@@ -21,7 +21,7 @@ criterion = cross_entropy
 lr_decay_step = 20
 log_interval = 20
 name = exp
-model_name = efficientnet_b0
+model_name = efficientnet_b3
 pretrained = True
 ```
 
