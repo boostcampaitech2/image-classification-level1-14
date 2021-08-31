@@ -27,7 +27,12 @@ pretrained = True
 
 ## branch info
 * T2102: 백재형 baekTree
-* T2151: 이나영 
+* T2103: 백종원
+* T2120: 신원지
+* T2141: 유형진
+* T2151: 이나영
+* T2183: 임채영 
+
 
 ## Google Docs
 https://docs.google.com/document/d/1QKYWxBgnkJC-4CD5-rOlD8_7qICw0V8HkjbsrZV0rbg/edit 
