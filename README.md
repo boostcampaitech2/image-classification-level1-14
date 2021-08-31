@@ -13,14 +13,16 @@ augmentation = BaseAugmentation
 resize = 128, 96
 batch_size = 64
 valid_batch_size = 1000
-model = BaseModel
-optimizer = SGD
+model = MyModel
+optimizer = Adam
 lr = 1e-3
 val_ratio = 0.2
 criterion = cross_entropy
 lr_decay_step = 20
 log_interval = 20
 name = exp
+model_name = efficientnet_b0
+pretrained = True
 ```
 
 ## branch info
