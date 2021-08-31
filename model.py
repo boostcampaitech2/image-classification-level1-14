@@ -50,7 +50,8 @@ class MyModel(nn.Module):
         self.net = timm.create_model(model_name=model_name, pretrained=True)
         
         '''
-timm model
+timm.list_models(pretrained=True)
+
 ['adv_inception_v3',
  'cait_m36_384',
  'cait_m48_448',
