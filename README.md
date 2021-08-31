@@ -6,7 +6,7 @@ image-classification-level1-14 created by GitHub Classroom
 * 아래를 복붙하고 변경한 뒤 train.py으로 실행
 ```
 [arg]
-seed = 2142
+seed = 2141
 epochs = 5
 dataset = MaskBaseDataset
 augmentation = BaseAugmentation
