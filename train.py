@@ -12,13 +12,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
+from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau, CosineAnnealingLR
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 from dataset import MaskBaseDataset, MaskSplitByProfileDataset
-from dataset import get_fixed_labeled_csv, get_cropped_and_fixed_images
-from dataset import encode_multi_class
+from dataset import get_fixed_labeled_csv
 
 from loss import create_criterion
 
@@ -27,7 +26,6 @@ from sklearn.metrics import f1_score
 def seed_everything(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)  # if use multi-GPU
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     np.random.seed(seed)
@@ -104,6 +102,9 @@ def train(data_dir, model_dir, args):
     dataset = dataset_module(
         data_dir=data_dir,
     )
+    num_classes_mask = dataset.num_classes_mask
+    num_classes_gender = dataset.num_classes_gender
+    num_classes_age = dataset.num_classes_age
 
     # -- augmentation
     transform_module = getattr(import_module("dataset"), args.augmentation)  # default: BaseAugmentation
@@ -135,9 +136,7 @@ def train(data_dir, model_dir, args):
         drop_last=True,
     )
 
-    num_classes_mask = 3
-    num_classes_gender = 2
-    num_classes_age = 3
+    
     # -- model
     model_module = getattr(import_module("model"), args.model)  # default: BaseModel
     model = model_module(
@@ -149,15 +148,11 @@ def train(data_dir, model_dir, args):
     criterion = create_criterion(args.criterion)  # default: cross_entropy
     opt_module = getattr(import_module("torch.optim"), args.optimizer)  # default: SGD
     optimizer = opt_module(
-        filter(lambda p: p.requires_grad, model.parameters()),
+        model.parameters(),
         lr=args.lr,
         weight_decay=5e-4
     )
-
-    print("*"*100)
-    print(f"optimizer , {optimizer}")
-    # scheduler = StepLR(optimizer, args.lr_decay_step, gamma=0.5)
-    scheduler = ReduceLROnPlateau(optimizer,'min',factor=0.1, patience=2)
+    scheduler = ReduceLROnPlateau(optimizer,'min',factor=0.1, patience=3)
 
     # -- logging
     logger = SummaryWriter(log_dir=save_dir)
@@ -171,7 +166,6 @@ def train(data_dir, model_dir, args):
     best_val_acc = 0
     best_val_f1 = 0
     best_val_loss = np.inf
-    early_stop_count = 0
     for epoch in range(args.epochs):
         # train loop
         model.train()
@@ -184,7 +178,7 @@ def train(data_dir, model_dir, args):
             mask_label = mask_label.to(device)
             gender_label = gender_label.to(device)
             age_label = age_label.to(device)
-            labels = encode_multi_class(mask_label, gender_label, age_label)
+            labels =  MaskBaseDataset.encode_multi_class(mask_label, gender_label, age_label)
 
             optimizer.zero_grad()
             outs = model(inputs)
@@ -192,11 +186,12 @@ def train(data_dir, model_dir, args):
             mask_preds = torch.argmax(outs['mask'], dim=-1)
             gender_preds = torch.argmax(outs['gender'], dim=-1)
             age_preds = torch.argmax(outs['age'], dim=-1)
-            preds = encode_multi_class(mask_preds, gender_preds, age_preds)
+            preds = MaskBaseDataset.encode_multi_class(mask_preds, gender_preds, age_preds)
 
             loss_mask = criterion(outs['mask'], mask_label)
             loss_gender = criterion(outs['gender'], gender_label)
             loss_age = criterion(outs['age'], age_label)
+
             loss = loss_mask + loss_gender + loss_age
 
             loss.backward()
@@ -204,7 +199,7 @@ def train(data_dir, model_dir, args):
 
             loss_value += loss.item()
             matches += (preds == labels).sum().item()
-
+            
             if (idx + 1) % args.log_interval == 0:
                 train_f1 = f1_score(labels.cpu().detach().numpy().tolist(), preds.cpu().detach().numpy().tolist(), average = 'macro')
                 train_loss = loss_value / args.log_interval
@@ -217,9 +212,10 @@ def train(data_dir, model_dir, args):
                 logger.add_scalar("Train/loss", train_loss, epoch * len(train_loader) + idx)
                 logger.add_scalar("Train/accuracy", train_acc, epoch * len(train_loader) + idx)
                 logger.add_scalar("Train/f1", train_f1, epoch * len(train_loader) + idx)
-
+                
                 loss_value = 0
                 matches = 0
+        scheduler.step(float(loss))
 
         # val loop
         with torch.no_grad():
@@ -237,18 +233,18 @@ def train(data_dir, model_dir, args):
                 mask_label = mask_label.to(device)
                 gender_label = gender_label.to(device)
                 age_label = age_label.to(device)
-                labels = encode_multi_class(mask_label, gender_label, age_label)
+                labels =  MaskBaseDataset.encode_multi_class(mask_label, gender_label, age_label)
 
                 outs = model(inputs) 
                 mask_preds = torch.argmax(outs['mask'], dim=-1)
                 gender_preds = torch.argmax(outs['gender'], dim=-1)
                 age_preds = torch.argmax(outs['age'], dim=-1)
-                preds = encode_multi_class(mask_preds, gender_preds, age_preds)
+                preds =  MaskBaseDataset.encode_multi_class(mask_preds, gender_preds, age_preds)
 
                 loss_mask = criterion(outs['mask'], mask_label)
                 loss_gender = criterion(outs['gender'], gender_label)
                 loss_age = criterion(outs['age'], age_label)
-
+                
                 loss_item = (loss_mask + loss_gender + loss_age).item()
                 acc_item = (labels == preds).sum().item()
                 f1_item = f1_score(labels.cpu().detach().numpy().tolist(), preds.cpu().detach().numpy().tolist(), average = 'macro')
@@ -261,15 +257,15 @@ def train(data_dir, model_dir, args):
                     inputs_np = torch.clone(inputs).detach().cpu().permute(0, 2, 3, 1).numpy()
                     inputs_np = dataset_module.denormalize_image(inputs_np, dataset.mean, dataset.std)
                     figure = grid_image(
-                        inputs_np, labels, preds, n=32, shuffle=args.dataset != "MaskSplitByProfileDataset"
+                        inputs_np, labels, preds, n=16, shuffle=args.dataset != "MaskSplitByProfileDataset"
                     )
 
             val_loss = np.sum(val_loss_items) / len(val_loader)
             val_acc = np.sum(val_acc_items) / len(val_set)
             val_f1 = np.sum(val_f1_items) / len(val_loader)
             best_val_loss = min(best_val_loss, val_loss)
+            best_f1 = max(best_val_f1, val_f1)
             if val_acc > best_val_acc:
-                early_stop_count=0
                 print(f"New best model for val accuracy : {val_acc:4.2%}! saving the best model..")
                 torch.save(model.module.state_dict(), f"{save_dir}/bestAcc.pth")
                 print('model path', f"{save_dir}")
@@ -278,6 +274,7 @@ def train(data_dir, model_dir, args):
             if val_f1 > best_val_f1:
                 print(f"New best model for val f1 : {val_f1:4.2%}! saving the best model..")
                 torch.save(model.module.state_dict(), f"{save_dir}/bestF1.pth")
+                print('model path', f"{save_dir}")
                 best_val_f1 = val_f1
                 counter = 0
             else:
@@ -285,8 +282,7 @@ def train(data_dir, model_dir, args):
 
             if counter > patience:
                 print("Early Stopping...")
-                early_stop = True
-                return early_stop, None
+                break
 
             torch.save(model.module.state_dict(), f"{save_dir}/last.pth")
             print(
@@ -297,13 +293,10 @@ def train(data_dir, model_dir, args):
             logger.add_scalar("Val/accuracy", val_acc, epoch)
             logger.add_scalar("Val/f1", val_f1, epoch)
             logger.add_figure("results", figure, epoch)
-            scheduler.step(val_loss)
+            
             print()
-
-            if early_stop_count == 7:
-                break
                 
-    logger.flush()
+    # logger.flush()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -312,7 +305,7 @@ if __name__ == '__main__':
     import os
     load_dotenv(verbose=True)
 
-    from ConfigParser import seed, epochs, dataset, augmentation, resize, batch_size, valid_batch_size, model, optimizer, lr, val_ratio, criterion, lr_decay_step, log_interval, name
+    from ConfigParser import seed, epochs, dataset, augmentation, resize, batch_size, valid_batch_size, model, optimizer, lr, val_ratio, criterion, lr_decay_step, log_interval, name, data_dir, model_dir
 
     parser.add_argument('--seed', type=int, default=seed,   help='random seed (config: ' + str(seed) + ')')
     parser.add_argument('--epochs', type=int, default=epochs,   help='number of epochs to train (config: ' + str(epochs) + ')')
@@ -330,19 +323,13 @@ if __name__ == '__main__':
     parser.add_argument('--log_interval', type=int, default=log_interval,   help='how many batches to wait before logging training status (config: '+str(log_interval)+')')
     parser.add_argument('--name', default=name,   help='model save at {SM_MODEL_DIR}/{name}')
 
-    if os.path.isfile("/opt/ml/code/labeled_data.csv"):
-        if not os.path.isdir("/opt/ml/input/data/train/new_imgs"):
-            print("Saving Cropped images")
-            get_cropped_and_fixed_images()
-    else:
+    if not os.path.isfile("/opt/ml/code/labeled_data.csv"):
         print("You have to make error-fixed csv!!")
         get_fixed_labeled_csv()
-        print("Saving Cropped images")
-        get_cropped_and_fixed_images()
 
     # Container environment
-    parser.add_argument('--data_dir', type=str, default=os.environ.get('SM_CHANNEL_TRAIN', '/opt/ml/input/data/train/new_imgs'))
-    parser.add_argument('--model_dir', type=str, default=os.environ.get('SM_MODEL_DIR', '/opt/ml/code/p1_baseline/model'))
+    parser.add_argument('--data_dir', type=str, default=os.environ.get('SM_CHANNEL_TRAIN', data_dir))
+    parser.add_argument('--model_dir', type=str, default=os.environ.get('SM_MODEL_DIR', model_dir))
 
     args = parser.parse_args()
     print(args)

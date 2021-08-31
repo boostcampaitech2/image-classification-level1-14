@@ -20,6 +20,7 @@ import matplotlib.pyplot as plt
 from facenet_pytorch import MTCNN
 import os, cv2
 from tqdm import tqdm
+import csv
 
 IMG_EXTENSIONS = [
     ".jpg", ".JPG", ".jpeg", ".JPEG", ".png",
@@ -64,12 +65,16 @@ class CustomAugmentation:
     def __init__(self, resize, mean, std, **args):
         self.transform = Compose([
             Resize(resize[0],resize[1]),
-            ColorJitter(brightness=(1, 2)),
+            HorizontalFlip(p=0.5),
+            # ShiftScaleRotate(p=0.5),
+            HueSaturationValue(hue_shift_limit=0.2, sat_shift_limit=0.2, val_shift_limit=0.2, p=0.5), # 색조, 채도 값
+            RandomBrightnessContrast(brightness_limit=(-0.1, 0.1), contrast_limit=(-0.1, 0.1), p=0.5),
+            GaussNoise(p=0.5),
             Normalize(mean=mean, std=std, max_pixel_value=255.0, p=1.0),
-            ToTensorV2(p=1.0)
-            # AddGaussianNoise()
+            ToTensorV2(p=1.0),
         ])
-
+            
+      
     def __call__(self, image):
         return self.transform(image=np.array(image))['image']
 
@@ -214,6 +219,10 @@ class MaskBaseDataset(Dataset):
         return Image.open(image_path).convert('RGB')
 
     @staticmethod
+    def encode_multi_class(mask_label, gender_label, age_label) -> int:
+        return mask_label * 6 + gender_label * 3 + age_label
+
+    @staticmethod
     def decode_multi_class(multi_class_label) -> Tuple[MaskLabels, GenderLabels, AgeLabels]:
         mask_label = (multi_class_label // 6) % 3
         gender_label = (multi_class_label // 3) % 2
@@ -242,9 +251,6 @@ class MaskBaseDataset(Dataset):
         # random split
         train_set, val_set = random_split(self, [n_train, n_val])
         return train_set, val_set
-
-def encode_multi_class(mask_label, gender_label, age_label) -> int:
-    return mask_label * 6 + gender_label * 3 + age_label
 
 class MaskSplitByProfileDataset(MaskBaseDataset):
     """
@@ -323,119 +329,71 @@ class TestDataset(Dataset):
     def __len__(self):
         return len(self.img_paths)
 
+train_dir = '/opt/ml/input/data/train'
+image_dir = os.path.join(train_dir, 'images')
 
-def get_fixed_labeled_csv():
-    df = pd.read_csv("/opt/ml/input/data/train/train.csv")
-
-    id_overlap_error = ["003397"]
-    gender_labeling_error = ['006359', '006360',
-                             '006361', '006362', '006363', '006364']
-    mask_labeling_error = ['000020', '004418', '005227']
-
-    id_max = int(max(df['id']))
-    id_new = id_max+1
-
-    new_data_list = []
-
-    for idx in range(len(df)):
-        _path = df['path'].iloc[idx]  # 순서대로 가져와야 하기 때문에 iloc을 사용해 가져옵니다.
-        _gender = df['gender'].iloc[idx]
-        _age = df['age'].iloc[idx]
-        _id = df['id'].iloc[idx]
-
-        if _id in id_overlap_error:
-            _id = '%06d' % (id_new)
-            id_new += 1
+def get_label(img_paths): # ['006578_male_Asian_19/normal.jpg, ...]'
+    labels = []
+    for path in img_paths:
+        _dir, img = path.split('/')
+        _id,gender, _, age = _dir.split('_')
+        age = int(age)
+        
+        gender_labeling_error = ['006359', '006360','006361', '006362', '006363', '006364']
+        mask_labeling_error = ['000020', '004418', '005227']
 
         if _id in gender_labeling_error:
-            if _gender == "male":
-                _gender = 'female'
-            else:
-                _gender = 'male'
+            if gender == 'male':
+                gender = 'female'
+            elif gender == 'female':
+                gender = 'male'
 
-        # 각 dir의 이미지들을 iterative 하게 가져옵니다.
-        for img_name in Path(f"/opt/ml/input/data/train/images/{_path}").iterdir():
-            img_stem = img_name.stem  # 해당 파일의 파일명만을 가져옵니다. 확장자 제외.
-            if not img_stem.startswith('._'):  # avoid hidden files
-                if _id in mask_labeling_error:
-                    if img_stem == "incorrect_mask":
-                        img_stem = 'normal'
-                    elif img_stem == 'normal':
-                        img_stem = 'incorrect_mask'
-                new_data_list.append(
-                    [_id, _age, _gender, img_stem, img_name.__str__()])
+        if _id in mask_labeling_error:
+            if img.startswith('incorrect_mask'):
+                img = 'normal'
+            elif img.startswith('normal'):
+                img = 'incorrect_mask'
 
-    df = pd.DataFrame(new_data_list)
-    df.columns = ['id', 'age', 'gender', 'stem', 'img_path']
-
-    df['label'] = 0  # SET SCORE
-    # AGE
-    df['label'] += ((df['age'] >= 30) & (df['age'] < 60))*1
-    df['label'] += (df['age'] >= 60)*2
-
-    # GENDER
-    df['label'] += (df['gender'] == 'female')*3
-
-    # MASK wearing condition
-    df['label'] += (df['stem'].isin(['incorrect_mask']))*6
-    df['label'] += (df['stem'].isin(['normal']))*12
-
-    df.to_csv('/opt/ml/code/labeled_data.csv', sep=',', na_rep='NaN')
+        label = 0
+        
+        # Mask 
+        if img.startswith('incorrect_mask'):
+            label += 6
+        elif img.startswith('normal'):
+            label += 12
+        
+        # Gender
+        if gender=='female':
+            label += 3
+        
+        # Age
+        if age>=30 and age<60:
+            label += 1
+        elif age>= 60:
+            label += 2
+        labels.append(label)
+    
+    return labels
 
 
-def get_cropped_and_fixed_images():
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    mtcnn = MTCNN(keep_all=True, device=device)
+def get_fixed_labeled_csv():
+    df = pd.read_csv(os.path.join(train_dir, 'train.csv'))
+    labels = []
+    image_folder_paths = [os.path.join(image_dir,path) for path in df.path]
+    
+    img_paths=[]
+    for people in image_folder_paths:
+        split_dir = people.split('/')
+        img_paths.append([os.path.join(split_dir[-1], file) for file in os.listdir(people) if not file.startswith("._")])
+    
+    lst=[['path','label']]
 
-    os.makedirs('/opt/ml/input/data/train/new_imgs', exist_ok=True)
-    new_img_dir = '/opt/ml/input/data/train/new_imgs'
-    df = pd.read_csv("/opt/ml/code/labeled_data.csv")
+    for i in range(len(df)):
+        for j in range(7):
+            labels = get_label(img_paths[i])
+            lst.append([img_paths[i][j],labels[j]])
 
-    cnt = 0
-
-    for index in tqdm(range(len(df))):
-
-        path = df.iloc[index].img_path
-        img = cv2.imread(path)
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-
-        # mtcnn 적용
-        boxes, probs = mtcnn.detect(img)
-
-        if not isinstance(boxes, np.ndarray):
-            # 직접 crop
-            img = img[100:400, 50:350, :]
-
-        # boexes size 확인
-        else:
-            xmin = int(boxes[0, 0])-30
-            ymin = int(boxes[0, 1])-30
-            xmax = int(boxes[0, 2])+30
-            ymax = int(boxes[0, 3])+30
-
-            if xmin < 0:
-                xmin = 0
-            if ymin < 0:
-                ymin = 0
-            if xmax > 384:
-                xmax = 384
-            if ymax > 512:
-                ymax = 512
-
-            img = img[ymin:ymax, xmin:xmax, :]
-
-            img_fixed_dir = '_'.join(
-                [df.iloc[index].id, df.iloc[index].gender, "Asian", str(df.iloc[index].age)])
-            
-            basename = os.path.basename(path)
-            ext = os.path.splitext(basename)[1].lower()
-
-        tmp = os.path.join(new_img_dir, img_fixed_dir)
-        cnt += 1
-
-        try:
-            os.mkdir(tmp)
-        except:
-            pass
-
-        plt.imsave(os.path.join(tmp, df.iloc[index].stem+ext), img)
+    with open('/opt/ml/code/labeled_data.csv','w') as file:
+        write = csv.writer(file)
+        write.writerows(lst)
+    print()

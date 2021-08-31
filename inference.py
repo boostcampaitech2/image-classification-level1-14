@@ -7,20 +7,19 @@ import torch
 from torch.utils.data import DataLoader
 
 from dataset import TestDataset, MaskBaseDataset
-from dataset import encode_multi_class
 
+import multiprocessing
 
 def load_model(saved_model, num_classes_mask,num_classes_gender,num_classes_age, device):
-    model_cls = getattr(import_module("model"), args.model)
-    model = model_cls(
-        num_classes_mask=num_classes_mask, num_classes_gender=num_classes_gender, num_classes_age=num_classes_age
-    )
+    # model.py import 하고 해당 모듈의 args.model class 불러옴
+    model_module = getattr(import_module("model"), args.model)  # default: BaseModel
+    model = model_module(num_classes_mask=num_classes_mask, num_classes_gender=num_classes_gender, num_classes_age=num_classes_age)
 
     # tarpath = os.path.join(saved_model, 'best.tar.gz')
     # tar = tarfile.open(tarpath, 'r:gz')
     # tar.extractall(path=saved_model)
 
-    model_path = os.path.join(saved_model, 'bestF1.pth')
+    model_path = os.path.join(saved_model, 'bestAcc.pth')
     model.load_state_dict(torch.load(model_path, map_location=device))
 
     return model
@@ -51,7 +50,7 @@ def inference(data_dir, model_dir, output_dir, args):
     loader = torch.utils.data.DataLoader(
         dataset,
         batch_size=args.batch_size,
-        num_workers=4,
+        num_workers=multiprocessing.cpu_count()//2,
         shuffle=False,
         pin_memory=use_cuda,
         drop_last=False,
@@ -67,7 +66,7 @@ def inference(data_dir, model_dir, output_dir, args):
             mask_preds = torch.argmax(outs['mask'], dim=-1)
             gender_preds = torch.argmax(outs['gender'], dim=-1)
             age_preds = torch.argmax(outs['age'], dim=-1)
-            pred = encode_multi_class(mask_preds, gender_preds, age_preds)
+            pred = MaskBaseDataset.encode_multi_class(mask_preds, gender_preds, age_preds)
 
             preds.extend(pred.cpu().numpy())
 
@@ -81,13 +80,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     # Data and model checkpoints directories
-    parser.add_argument('--batch_size', type=int, default=64, help='input batch size for validing (default: 64)')
+    parser.add_argument('--batch_size', type=int, default=32, help='input batch size for validing (default: 64)')
     parser.add_argument('--resize', type=tuple, default=(128,96), help='resize size for image when you trained (default: (128,96))')
     parser.add_argument('--model', type=str, default='resnet50', help='model type (default: resnet50)')
 
     # Container environment
     parser.add_argument('--data_dir', type=str, default=os.environ.get('SM_CHANNEL_EVAL', '/opt/ml/input/data/eval'))
-    parser.add_argument('--model_dir', type=str, default=os.environ.get('SM_CHANNEL_MODEL', '/opt/ml/code/p1_baseline/model/exp7'))
+    parser.add_argument('--model_dir', type=str, default=os.environ.get('SM_CHANNEL_MODEL', '/opt/ml/code/p1_baseline/model/exp31'))
     parser.add_argument('--output_dir', type=str, default=os.environ.get('SM_OUTPUT_DATA_DIR', '/opt/ml/code/p1_baseline/output'))
 
     args = parser.parse_args()

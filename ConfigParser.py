@@ -21,3 +21,5 @@ criterion=config['arg']['criterion']
 lr_decay_step=int(config['arg']['lr_decay_step'])
 log_interval=int(config['arg']['log_interval'])
 name=config['arg']['name']
+data_dir=config['arg']['data_dir']
+model_dir=config['arg']['model_dir']
