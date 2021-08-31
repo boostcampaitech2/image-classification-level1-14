@@ -20,7 +20,7 @@ def load_model(saved_model, num_classes_mask,num_classes_gender,num_classes_age,
     # tar = tarfile.open(tarpath, 'r:gz')
     # tar.extractall(path=saved_model)
 
-    model_path = os.path.join(saved_model, 'best.pth')
+    model_path = os.path.join(saved_model, 'bestF1.pth')
     model.load_state_dict(torch.load(model_path, map_location=device))
 
     return model
@@ -87,7 +87,7 @@ if __name__ == '__main__':
 
     # Container environment
     parser.add_argument('--data_dir', type=str, default=os.environ.get('SM_CHANNEL_EVAL', '/opt/ml/input/data/eval'))
-    parser.add_argument('--model_dir', type=str, default=os.environ.get('SM_CHANNEL_MODEL', '/opt/ml/code/p1_baseline/model/exp16'))
+    parser.add_argument('--model_dir', type=str, default=os.environ.get('SM_CHANNEL_MODEL', '/opt/ml/code/p1_baseline/model/exp7'))
     parser.add_argument('--output_dir', type=str, default=os.environ.get('SM_OUTPUT_DATA_DIR', '/opt/ml/code/p1_baseline/output'))
 
     args = parser.parse_args()

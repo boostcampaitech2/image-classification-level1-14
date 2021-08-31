@@ -17,8 +17,9 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 from dataset import MaskBaseDataset, MaskSplitByProfileDataset
-
 from dataset import get_fixed_labeled_csv, get_cropped_and_fixed_images
+from dataset import encode_multi_class
+
 from loss import create_criterion
 
 from sklearn.metrics import f1_score
@@ -32,7 +33,6 @@ def seed_everything(seed):
     np.random.seed(seed)
     random.seed(seed)
 
-
 def get_lr(optimizer):
     for param_group in optimizer.param_groups:
         return param_group['lr']
@@ -45,7 +45,6 @@ def grid_image(np_images, gts, preds, n=32, shuffle=False):
     choices = random.choices(range(batch_size), k=n) if shuffle else list(range(n))
 
     figure = plt.figure(figsize=(12, 18 + 2))  # cautions: hardcoded, 이미지 크기에 따라 figsize 를 조정해야 할 수 있습니다. T.T
-
     plt.subplots_adjust(top=0.8)               # cautions: hardcoded, 이미지 크기에 따라 top 를 조정해야 할 수 있습니다. T.T
     n_grid = np.ceil(n ** 0.5)
     tasks = ["mask", "gender", "age"]
@@ -105,7 +104,6 @@ def train(data_dir, model_dir, args):
     dataset = dataset_module(
         data_dir=data_dir,
     )
-    num_classes = dataset.num_classes  # 18
 
     # -- augmentation
     transform_module = getattr(import_module("dataset"), args.augmentation)  # default: BaseAugmentation
@@ -137,10 +135,13 @@ def train(data_dir, model_dir, args):
         drop_last=True,
     )
 
+    num_classes_mask = 3
+    num_classes_gender = 2
+    num_classes_age = 3
     # -- model
     model_module = getattr(import_module("model"), args.model)  # default: BaseModel
     model = model_module(
-        num_classes=num_classes
+         num_classes_mask=num_classes_mask, num_classes_gender=num_classes_gender, num_classes_age=num_classes_age
     ).to(device)
     model = torch.nn.DataParallel(model)
 
@@ -177,22 +178,32 @@ def train(data_dir, model_dir, args):
         loss_value = 0
         matches = 0
         for idx, train_batch in enumerate(train_loader):
-            inputs, labels = train_batch
+            inputs, mask_label, gender_label, age_label = train_batch
+            
             inputs = inputs.to(device)
-            labels = labels.to(device)
+            mask_label = mask_label.to(device)
+            gender_label = gender_label.to(device)
+            age_label = age_label.to(device)
+            labels = encode_multi_class(mask_label, gender_label, age_label)
 
             optimizer.zero_grad()
-
             outs = model(inputs)
-            preds = torch.argmax(outs, dim=-1)
-            loss = criterion(outs, labels)
+
+            mask_preds = torch.argmax(outs['mask'], dim=-1)
+            gender_preds = torch.argmax(outs['gender'], dim=-1)
+            age_preds = torch.argmax(outs['age'], dim=-1)
+            preds = encode_multi_class(mask_preds, gender_preds, age_preds)
+
+            loss_mask = criterion(outs['mask'], mask_label)
+            loss_gender = criterion(outs['gender'], gender_label)
+            loss_age = criterion(outs['age'], age_label)
+            loss = loss_mask + loss_gender + loss_age
 
             loss.backward()
             optimizer.step()
 
             loss_value += loss.item()
             matches += (preds == labels).sum().item()
-
 
             if (idx + 1) % args.log_interval == 0:
                 train_f1 = f1_score(labels.cpu().detach().numpy().tolist(), preds.cpu().detach().numpy().tolist(), average = 'macro')
@@ -217,25 +228,35 @@ def train(data_dir, model_dir, args):
             val_loss_items = []
             val_acc_items = []
             val_f1_items = []
-            
             figure = None
+
             for val_batch in val_loader:
-                inputs, labels = val_batch
+                inputs, mask_label, gender_label, age_label = val_batch
+                
                 inputs = inputs.to(device)
-                labels = labels.to(device)
+                mask_label = mask_label.to(device)
+                gender_label = gender_label.to(device)
+                age_label = age_label.to(device)
+                labels = encode_multi_class(mask_label, gender_label, age_label)
 
-                outs = model(inputs)
-                preds = torch.argmax(outs, dim=-1)
+                outs = model(inputs) 
+                mask_preds = torch.argmax(outs['mask'], dim=-1)
+                gender_preds = torch.argmax(outs['gender'], dim=-1)
+                age_preds = torch.argmax(outs['age'], dim=-1)
+                preds = encode_multi_class(mask_preds, gender_preds, age_preds)
 
-                loss_item = criterion(outs, labels).item()
+                loss_mask = criterion(outs['mask'], mask_label)
+                loss_gender = criterion(outs['gender'], gender_label)
+                loss_age = criterion(outs['age'], age_label)
+
+                loss_item = (loss_mask + loss_gender + loss_age).item()
                 acc_item = (labels == preds).sum().item()
                 f1_item = f1_score(labels.cpu().detach().numpy().tolist(), preds.cpu().detach().numpy().tolist(), average = 'macro')
+                
                 val_loss_items.append(loss_item)
                 val_acc_items.append(acc_item)
                 val_f1_items.append(f1_item)
 
-                epoch_f1 += f1_score(labels.cpu().numpy(),preds.cpu().numpy(),average='macro')
-                n_iter += 1
                 if figure is None:
                     inputs_np = torch.clone(inputs).detach().cpu().permute(0, 2, 3, 1).numpy()
                     inputs_np = dataset_module.denormalize_image(inputs_np, dataset.mean, dataset.std)
@@ -243,7 +264,6 @@ def train(data_dir, model_dir, args):
                         inputs_np, labels, preds, n=32, shuffle=args.dataset != "MaskSplitByProfileDataset"
                     )
 
-            epoch_f1 = epoch_f1/n_iter
             val_loss = np.sum(val_loss_items) / len(val_loader)
             val_acc = np.sum(val_acc_items) / len(val_set)
             val_f1 = np.sum(val_f1_items) / len(val_loader)
@@ -277,16 +297,13 @@ def train(data_dir, model_dir, args):
             logger.add_scalar("Val/accuracy", val_acc, epoch)
             logger.add_scalar("Val/f1", val_f1, epoch)
             logger.add_figure("results", figure, epoch)
-
+            scheduler.step(val_loss)
             print()
 
             if early_stop_count == 7:
                 break
                 
     logger.flush()
-    os.system(f"tensorboard --logdir {save_dir}")
-    os.system(f"python3 code/p1_baseline/inference.py --model_dir {save_dir} --model {args.model}")
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -295,10 +312,8 @@ if __name__ == '__main__':
     import os
     load_dotenv(verbose=True)
 
-    # 다양한 하이퍼파라미터 세팅으로 학습 진행
-    # 텐서보드를 통해 학습 양상을 실시간으로 확인, 점검하고 실험 간 결과 비교
-    # 커스텀 모듈을 추가해 성능을 더 끌어올려보기
-    # Data and model checkpoints directories
+    from ConfigParser import seed, epochs, dataset, augmentation, resize, batch_size, valid_batch_size, model, optimizer, lr, val_ratio, criterion, lr_decay_step, log_interval, name
+
     parser.add_argument('--seed', type=int, default=seed,   help='random seed (config: ' + str(seed) + ')')
     parser.add_argument('--epochs', type=int, default=epochs,   help='number of epochs to train (config: ' + str(epochs) + ')')
     parser.add_argument('--dataset', type=str, default=dataset,   help='dataset augmentation type (config: ' + dataset + ')')
@@ -315,16 +330,6 @@ if __name__ == '__main__':
     parser.add_argument('--log_interval', type=int, default=log_interval,   help='how many batches to wait before logging training status (config: '+str(log_interval)+')')
     parser.add_argument('--name', default=name,   help='model save at {SM_MODEL_DIR}/{name}')
 
-    # Container environment
-    parser.add_argument('--data_dir', type=str, default=os.environ.get('SM_CHANNEL_TRAIN', '/opt/ml/input/data/train/new_imgs'))
-    parser.add_argument('--model_dir', type=str, default=os.environ.get('SM_MODEL_DIR', '/opt/ml/code/p1_baseline/model'))
-
-    args = parser.parse_args()
-    print(args)
-
-    data_dir = args.data_dir
-    model_dir = args.model_dir
-
     if os.path.isfile("/opt/ml/code/labeled_data.csv"):
         if not os.path.isdir("/opt/ml/input/data/train/new_imgs"):
             print("Saving Cropped images")
@@ -335,6 +340,16 @@ if __name__ == '__main__':
         print("Saving Cropped images")
         get_cropped_and_fixed_images()
 
+    # Container environment
+    parser.add_argument('--data_dir', type=str, default=os.environ.get('SM_CHANNEL_TRAIN', '/opt/ml/input/data/train/new_imgs'))
+    parser.add_argument('--model_dir', type=str, default=os.environ.get('SM_MODEL_DIR', '/opt/ml/code/p1_baseline/model'))
+
+    args = parser.parse_args()
+    print(args)
+
+    data_dir = args.data_dir
+    model_dir = args.model_dir
+    
     train(data_dir, model_dir, args)
 
     # tensorboard --logdir "/opt/ml/code/p1_baseline/model/exp13"
