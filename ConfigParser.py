@@ -22,4 +22,4 @@ lr_decay_step=int(config['arg']['lr_decay_step'])
 log_interval=int(config['arg']['log_interval'])
 name=config['arg']['name']
 model_name = config['arg']['model_name']
-pretrained = config['arg']['pretrained']
+pretrained = bool(config['arg']['pretrained'])
