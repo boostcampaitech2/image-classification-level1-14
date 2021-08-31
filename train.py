@@ -163,7 +163,12 @@ def train(data_dir, model_dir, args):
     with open(os.path.join(save_dir, 'config.json'), 'w', encoding='utf-8') as f:
         json.dump(vars(args), f, ensure_ascii=False, indent=4)
 
+    # earlystop
+    patience = 10
+    counter = 0
+
     best_val_acc = 0
+    best_val_f1 = 0
     best_val_loss = np.inf
     early_stop_count = 0
     for epoch in range(args.epochs):
@@ -187,16 +192,20 @@ def train(data_dir, model_dir, args):
 
             loss_value += loss.item()
             matches += (preds == labels).sum().item()
+
+
             if (idx + 1) % args.log_interval == 0:
+                train_f1 = f1_score(labels.cpu().detach().numpy().tolist(), preds.cpu().detach().numpy().tolist(), average = 'macro')
                 train_loss = loss_value / args.log_interval
                 train_acc = matches / args.batch_size / args.log_interval
                 current_lr = get_lr(optimizer)
                 print(
                     f"Epoch[{epoch}/{args.epochs}]({idx + 1}/{len(train_loader)}) || "
-                    f"training loss {train_loss:4.4} || training accuracy {train_acc:4.2%} || lr {current_lr}"
+                    f"training loss {train_loss:4.4} || training accuracy {train_acc:4.2%} || training f1 {train_f1:4.2%} || lr {current_lr}"
                 )
                 logger.add_scalar("Train/loss", train_loss, epoch * len(train_loader) + idx)
                 logger.add_scalar("Train/accuracy", train_acc, epoch * len(train_loader) + idx)
+                logger.add_scalar("Train/f1", train_f1, epoch * len(train_loader) + idx)
 
                 loss_value = 0
                 matches = 0
@@ -207,8 +216,8 @@ def train(data_dir, model_dir, args):
             model.eval()
             val_loss_items = []
             val_acc_items = []
-            epoch_f1 = 0
-            n_iter = 0
+            val_f1_items = []
+            
             figure = None
             for val_batch in val_loader:
                 inputs, labels = val_batch
@@ -220,8 +229,10 @@ def train(data_dir, model_dir, args):
 
                 loss_item = criterion(outs, labels).item()
                 acc_item = (labels == preds).sum().item()
+                f1_item = f1_score(labels.cpu().detach().numpy().tolist(), preds.cpu().detach().numpy().tolist(), average = 'macro')
                 val_loss_items.append(loss_item)
                 val_acc_items.append(acc_item)
+                val_f1_items.append(f1_item)
 
                 epoch_f1 += f1_score(labels.cpu().numpy(),preds.cpu().numpy(),average='macro')
                 n_iter += 1
@@ -235,24 +246,36 @@ def train(data_dir, model_dir, args):
             epoch_f1 = epoch_f1/n_iter
             val_loss = np.sum(val_loss_items) / len(val_loader)
             val_acc = np.sum(val_acc_items) / len(val_set)
+            val_f1 = np.sum(val_f1_items) / len(val_loader)
             best_val_loss = min(best_val_loss, val_loss)
             if val_acc > best_val_acc:
                 early_stop_count=0
                 print(f"New best model for val accuracy : {val_acc:4.2%}! saving the best model..")
-                torch.save(model.module.state_dict(), f"{save_dir}/best.pth")
+                torch.save(model.module.state_dict(), f"{save_dir}/bestAcc.pth")
                 print('model path', f"{save_dir}")
                 best_val_acc = val_acc
+
+            if val_f1 > best_val_f1:
+                print(f"New best model for val f1 : {val_f1:4.2%}! saving the best model..")
+                torch.save(model.module.state_dict(), f"{save_dir}/bestF1.pth")
+                best_val_f1 = val_f1
+                counter = 0
             else:
-                early_stop_count += 1
+                counter += 1
+
+            if counter > patience:
+                print("Early Stopping...")
+                early_stop = True
+                return early_stop, None
 
             torch.save(model.module.state_dict(), f"{save_dir}/last.pth")
             print(
-                f"[Val] acc : {val_acc:4.2%}, loss: {val_loss:4.2} || "
-                f"best acc : {best_val_acc:4.2%}, best loss: {best_val_loss:4.2} || "
-                f"f1_score : {epoch_f1:0.4}"
+                f"[Val] acc : {val_acc:4.2%}, loss: {val_loss:4.2}, f1: {val_f1:4.2} || "
+                f"best acc : {best_val_acc:4.2%}, best loss: {best_val_loss:4.2}, best f1: {best_val_f1:4.2}"
             )
             logger.add_scalar("Val/loss", val_loss, epoch)
             logger.add_scalar("Val/accuracy", val_acc, epoch)
+            logger.add_scalar("Val/f1", val_f1, epoch)
             logger.add_figure("results", figure, epoch)
 
             print()
@@ -276,30 +299,22 @@ if __name__ == '__main__':
     # 텐서보드를 통해 학습 양상을 실시간으로 확인, 점검하고 실험 간 결과 비교
     # 커스텀 모듈을 추가해 성능을 더 끌어올려보기
     # Data and model checkpoints directories
-    parser.add_argument('--seed', type=int, default=42, help='random seed (default: 42)')
-    parser.add_argument('--epochs', type=int, default=30, help='number of epochs to train (default: 30)')
-    parser.add_argument('--dataset', type=str, default='MaskSplitByProfileDataset', help='dataset augmentation type (default: MaskBaseDataset)')
-    parser.add_argument('--augmentation', type=str, default='CustomAugmentation', help='data augmentation type (default: CustomAugmentation)')
-    parser.add_argument("--resize", nargs="+", type=list, default=[128,96], help='resize size for image when training')
-    parser.add_argument('--batch_size', type=int, default=64, help='input batch size for training (default: 64)')
-    parser.add_argument('--valid_batch_size', type=int, default=64, help='input batch size for validing (default: 16)')
-    parser.add_argument('--model', type=str, default='resnet50', help='model type (default: resnet50)')
-    parser.add_argument('--optimizer', type=str, default='Adam', help='optimizer type (default: Adam)')
-    parser.add_argument('--lr', type=float, default=1e-3, help='learning rate (default: 1e-3)')
-    parser.add_argument('--val_ratio', type=float, default=0.2, help='ratio for validaton (default: 0.2)')
-    parser.add_argument('--criterion', type=str, default='focal', help='criterion type (default: focal)')
-    parser.add_argument('--lr_decay_step', type=int, default=20, help='learning rate scheduler deacy step (default: 20)')
-    parser.add_argument('--log_interval', type=int, default=20, help='how many batches to wait before logging training status')
-    parser.add_argument('--name', default='exp', help='model save at {SM_MODEL_DIR}/{name}')
+    parser.add_argument('--seed', type=int, default=seed,   help='random seed (config: ' + str(seed) + ')')
+    parser.add_argument('--epochs', type=int, default=epochs,   help='number of epochs to train (config: ' + str(epochs) + ')')
+    parser.add_argument('--dataset', type=str, default=dataset,   help='dataset augmentation type (config: ' + dataset + ')')
+    parser.add_argument('--augmentation', type=str, default=augmentation,   help='data augmentation type (config: ' + augmentation + ')')
+    parser.add_argument("--resize", nargs="+", type=list, default=resize,   help='resize size for image when training (config : ' + str(resize) + ')')
+    parser.add_argument('--batch_size', type=int, default=batch_size,   help='input batch size for training (config: ' + str(batch_size) + ')')
+    parser.add_argument('--valid_batch_size', type=int, default=valid_batch_size,   help='input batch size for validing (config: ' + str(valid_batch_size)  + ')')
+    parser.add_argument('--model', type=str, default=model,   help='model type (config: ' + model + ')')
+    parser.add_argument('--optimizer', type=str, default=optimizer,   help='optimizer type (config: ' + optimizer + ')')
+    parser.add_argument('--lr', type=float, default=lr,   help='learning rate (config: ' + str(lr) + ')')
+    parser.add_argument('--val_ratio', type=float, default=val_ratio,   help='ratio for validaton (config: ' + str(lr) + ')')
+    parser.add_argument('--criterion', type=str, default=criterion,   help='criterion type (config: ' + str(val_ratio) + ')')
+    parser.add_argument('--lr_decay_step', type=int, default=lr_decay_step,   help='learning rate scheduler deacy step (config: ' +str(lr_decay_step)  + ')')
+    parser.add_argument('--log_interval', type=int, default=log_interval,   help='how many batches to wait before logging training status (config: '+str(log_interval)+')')
+    parser.add_argument('--name', default=name,   help='model save at {SM_MODEL_DIR}/{name}')
 
-    if os.path.isfile("/opt/ml/code/labeled_data.csv"): 
-        if not os.path.isdir("/opt/ml/input/data/train/new_imgs"):
-            print("Saving Cropped images")
-            get_cropped_and_fixed_images()
-
-        print("You have to make error-fixed csv!!")
-        get_fixed_labeled_csv()
-            
     # Container environment
     parser.add_argument('--data_dir', type=str, default=os.environ.get('SM_CHANNEL_TRAIN', '/opt/ml/input/data/train/new_imgs'))
     parser.add_argument('--model_dir', type=str, default=os.environ.get('SM_MODEL_DIR', '/opt/ml/code/p1_baseline/model'))
@@ -309,6 +324,16 @@ if __name__ == '__main__':
 
     data_dir = args.data_dir
     model_dir = args.model_dir
+
+    if os.path.isfile("/opt/ml/code/labeled_data.csv"):
+        if not os.path.isdir("/opt/ml/input/data/train/new_imgs"):
+            print("Saving Cropped images")
+            get_cropped_and_fixed_images()
+    else:
+        print("You have to make error-fixed csv!!")
+        get_fixed_labeled_csv()
+        print("Saving Cropped images")
+        get_cropped_and_fixed_images()
 
     train(data_dir, model_dir, args)
 
