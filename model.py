@@ -57,3 +57,22 @@ class resnet50(nn.Module):
         gender = torch.sigmoid(self.linear_gender(x))  
         age = self.linear_age(x)
         return {'mask': mask, 'gender': gender, 'age': age}
+    
+class efficient(nn.Module):
+    def __init__(self, num_classes_mask, num_classes_gender, num_classes_age):
+        super(efficient,self).__init__()
+
+        self.net = EfficientNet.from_pretrained('efficientnet-b4')
+
+        self.linear_mask = nn.Sequential(nn.Linear(1792, num_classes_mask))
+        self.linear_gender = nn.Sequential(nn.Linear(1792, num_classes_gender))
+        self.linear_age = nn.Sequential(nn.Linear(1792, num_classes_age))
+
+    def forward(self, x):
+        bs, _, _, _ = x.shape
+        x = self.net.extract_features(x)
+        x = F.adaptive_avg_pool2d(x, 1).reshape(bs, -1)
+        mask = self.linear_mask(x)
+        gender = torch.sigmoid(self.linear_gender(x))  
+        age = self.linear_age(x)
+        return {'mask': mask, 'gender': gender, 'age': age}
