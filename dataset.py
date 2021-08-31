@@ -13,6 +13,9 @@ from torch.utils.data import Dataset, Subset, random_split
 from torchvision import transforms
 from torchvision.transforms import *
 
+from albumentations import *
+from albumentations.pytorch import ToTensorV2
+
 import matplotlib.pyplot as plt
 from facenet_pytorch import MTCNN
 import os
@@ -31,14 +34,14 @@ def is_image_file(filename):
 
 class BaseAugmentation:
     def __init__(self, resize, mean, std, **args):
-        self.transform = transforms.Compose([
-            Resize(resize, Image.BILINEAR),
-            ToTensor(),
-            Normalize(mean=mean, std=std),
+        self.transform = Compose([
+            Resize(resize[0], resize[1]),
+            Normalize(mean=mean, std=std, max_pixel_value=255.0, p=1.0),
+            ToTensorV2(p=1.0)
         ])
 
     def __call__(self, image):
-        return self.transform(image)
+        return self.transform(image=np.array(image))['image']
 
 
 class AddGaussianNoise(object):
@@ -60,15 +63,16 @@ class AddGaussianNoise(object):
 
 class CustomAugmentation:
     def __init__(self, resize, mean, std, **args):
-        self.transform = transforms.Compose([
-            Resize(resize, Image.BILINEAR),
-            ColorJitter(brightness=(0.7, 1.2), hue=(-0.3, 0.3)),
-            ToTensor(),
-            Normalize(mean=mean, std=std),
+        self.transform = Compose([
+            Resize(resize[0], resize[1]),
+            ColorJitter(brightness=(1, 2)),
+            Normalize(mean=mean, std=std, max_pixel_value=255.0, p=1.0),
+            ToTensorV2(p=1.0)
+            # AddGaussianNoise()
         ])
 
     def __call__(self, image):
-        return self.transform(image)
+        return self.transform(image=np.array(image))['image']
 
 
 class MaskLabels(int, Enum):
@@ -248,6 +252,10 @@ def encode_multi_class(mask_label, gender_label, age_label) -> int:
     return mask_label * 6 + gender_label * 3 + age_label
 
 
+def encode_multi_class(mask_label, gender_label, age_label) -> int:
+    return mask_label * 6 + gender_label * 3 + age_label
+
+
 class MaskSplitByProfileDataset(MaskBaseDataset):
     """
         train / val 나누는 기준을 이미지에 대해서 random 이 아닌
@@ -311,17 +319,17 @@ class MaskSplitByProfileDataset(MaskBaseDataset):
 class TestDataset(Dataset):
     def __init__(self, img_paths, resize, mean=(0.548, 0.504, 0.479), std=(0.237, 0.247, 0.246)):
         self.img_paths = img_paths
-        self.transform = transforms.Compose([
-            Resize(resize, Image.BILINEAR),
-            ToTensor(),
-            Normalize(mean=mean, std=std),
-        ])
+        self.transform = Compose([
+            Resize(resize[0], resize[1]),
+            Normalize(mean=mean, std=std, max_pixel_value=255.0, p=1.0),
+            ToTensorV2(p=1.0),
+        ], p=1.0)
 
     def __getitem__(self, index):
         image = Image.open(self.img_paths[index])
 
         if self.transform:
-            image = self.transform(image)
+            image = self.transform(image=np.array(image))['image']
         return image
 
     def __len__(self):
@@ -390,8 +398,9 @@ def get_fixed_labeled_csv():
 def get_cropped_and_fixed_images():
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     mtcnn = MTCNN(keep_all=True, device=device)
+
+    os.makedirs('/opt/ml/input/data/train/new_imgs', exist_ok=True)
     new_img_dir = '/opt/ml/input/data/train/new_imgs'
-    os.mkdir(new_img_dir)
     df = pd.read_csv("/opt/ml/code/labeled_data.csv")
 
     cnt = 0
@@ -430,6 +439,9 @@ def get_cropped_and_fixed_images():
             img_fixed_dir = '_'.join(
                 [df.iloc[index].id, df.iloc[index].gender, "Asian", str(df.iloc[index].age)])
 
+            basename = os.path.basename(path)
+            ext = os.path.splitext(basename)[1].lower()
+
         tmp = os.path.join(new_img_dir, img_fixed_dir)
         cnt += 1
 
@@ -457,3 +469,4 @@ def rand_bbox(size, lam):  # size : [Batch_size, Channel, Width, Height]
     bby2 = np.clip(cy + cut_h // 2, 0, H)
 
     return bbx1, bby1, bbx2, bby2
+    plt.imsave(os.path.join(tmp, df.iloc[index].stem+ext), img)
