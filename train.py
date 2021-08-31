@@ -322,6 +322,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=batch_size,   help='input batch size for training (config: ' + str(batch_size) + ')')
     parser.add_argument('--valid_batch_size', type=int, default=valid_batch_size,   help='input batch size for validing (config: ' + str(valid_batch_size)  + ')')
     parser.add_argument('--model', type=str, default=model,   help='model type (config: ' + model + ')')
+    parser.add_argument('--model_name', type=str, default='efficientnet_b0', help='model type (default: efficientnet_b0)') ##     
     parser.add_argument('--optimizer', type=str, default=optimizer,   help='optimizer type (config: ' + optimizer + ')')
     parser.add_argument('--lr', type=float, default=lr,   help='learning rate (config: ' + str(lr) + ')')
     parser.add_argument('--val_ratio', type=float, default=val_ratio,   help='ratio for validaton (config: ' + str(lr) + ')')
