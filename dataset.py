@@ -3,13 +3,23 @@ import random
 from collections import defaultdict
 from enum import Enum
 from typing import Tuple, List
+from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import torch
 from PIL import Image
 from torch.utils.data import Dataset, Subset, random_split
 from torchvision import transforms
 from torchvision.transforms import *
+
+from albumentations import *
+from albumentations.pytorch import ToTensorV2
+
+import matplotlib.pyplot as plt
+from facenet_pytorch import MTCNN
+import os, cv2
+from tqdm import tqdm
 
 IMG_EXTENSIONS = [
     ".jpg", ".JPG", ".jpeg", ".JPEG", ".png",
@@ -23,14 +33,14 @@ def is_image_file(filename):
 
 class BaseAugmentation:
     def __init__(self, resize, mean, std, **args):
-        self.transform = transforms.Compose([
-            Resize(resize, Image.BILINEAR),
-            ToTensor(),
-            Normalize(mean=mean, std=std),
+        self.transform = Compose([
+            Resize(resize[0],resize[1]),
+            Normalize(mean=mean, std=std, max_pixel_value=255.0, p=1.0),
+            ToTensorV2(p=1.0)
         ])
 
     def __call__(self, image):
-        return self.transform(image)
+        return self.transform(image=np.array(image))['image']
 
 
 class AddGaussianNoise(object):
@@ -52,17 +62,16 @@ class AddGaussianNoise(object):
 
 class CustomAugmentation:
     def __init__(self, resize, mean, std, **args):
-        self.transform = transforms.Compose([
-            CenterCrop((320, 256)),
-            Resize(resize, Image.BILINEAR),
-            ColorJitter(0.1, 0.1, 0.1, 0.1),
-            ToTensor(),
-            Normalize(mean=mean, std=std),
-            AddGaussianNoise()
+        self.transform = Compose([
+            Resize(resize[0],resize[1]),
+            ColorJitter(brightness=(1, 2)),
+            Normalize(mean=mean, std=std, max_pixel_value=255.0, p=1.0),
+            ToTensorV2(p=1.0)
+            # AddGaussianNoise()
         ])
 
     def __call__(self, image):
-        return self.transform(image)
+        return self.transform(image=np.array(image))['image']
 
 
 class MaskLabels(int, Enum):
