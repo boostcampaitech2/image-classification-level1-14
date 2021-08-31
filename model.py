@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+import timm
+from efficientnet_pytorch import EfficientNet
 
 class BaseModel(nn.Module):
     def __init__(self, num_classes):
@@ -51,3 +52,47 @@ class MyModel(nn.Module):
         2. 결과로 나온 output 을 return 해주세요
         """
         return x
+
+#Efficientnet
+class efficient(nn.Module):
+    def __init__(self, num_classes_mask, num_classes_gender, num_classes_age):
+        super().__init__()
+        self.net = timm.create_model('efficientnet_b3', pretrained=True)
+
+        for param in self.net.parameters():
+            param.requires_grad = False
+
+        self.linear_mask = nn.Linear(
+            in_features=1000, out_features=num_classes_mask, bias=True)
+        self.linear_gender = nn.Linear(
+            in_features=1000, out_features=num_classes_gender, bias=True)
+        self.linear_age = nn.Linear(
+            in_features=1000, out_features=num_classes_age, bias=True)
+
+    def forward(self, x):
+        x = self.net(x)
+        return {'mask': self.linear_mask(x), 'gender': self.linear_gender(x), 'age': self.linear_age(x)}
+
+
+class resnet50(nn.Module):
+    def __init__(self, num_classes_mask, num_classes_gender, num_classes_age):
+        super().__init__()
+
+        self.net = models.resnet50(pretrained=True)
+
+        for param in self.net.parameters():
+            param.requires_grad = False   
+        
+        num_feat = self.net.fc.in_features
+        self.net.fc = nn.Sequential()
+        self.linear_mask = nn.Linear(
+            in_features=num_feat, out_features=num_classes_mask, bias=True)
+        self.linear_gender = nn.Linear(
+            in_features=num_feat, out_features=num_classes_gender, bias=True)
+        self.linear_age = nn.Linear(
+            in_features=num_feat, out_features=num_classes_age, bias=True)
+
+
+    def forward(self, x):
+        x = self.net(x)
+        return {'mask': self.linear_mask(x), 'gender': self.linear_gender(x), 'age': self.linear_age(x)}
