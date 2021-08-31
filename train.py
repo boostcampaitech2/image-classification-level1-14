@@ -138,6 +138,14 @@ def train(data_dir, model_dir, args):
     num_classes_mask = 3
     num_classes_gender = 2
     num_classes_age = 3
+    
+    # -- pretrained
+    
+    pretrained = args.pretrained
+    
+    # -- model_name
+    model_name = args.model_name
+    
     # -- model
     model_module = getattr(import_module("model"), args.model)  # default: BaseModel
     model = model_module(
