@@ -21,5 +21,5 @@ criterion=config['arg']['criterion']
 lr_decay_step=int(config['arg']['lr_decay_step'])
 log_interval=int(config['arg']['log_interval'])
 name=config['arg']['name']
-model_name = config['arg']['model_name']
+model_name = config['arg']['model_name'] # choose one of model_names in timm.list_models(pretrained=True)
 pretrained = bool(config['arg']['pretrained'])
