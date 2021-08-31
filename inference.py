@@ -81,7 +81,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     # Data and model checkpoints directories
-    parser.add_argument('--batch_size', type=int, default=64, help='input batch size for validing (default: 8)')
+    parser.add_argument('--batch_size', type=int, default=64, help='input batch size for validing (default: 64)')
     parser.add_argument('--resize', type=tuple, default=(128,96), help='resize size for image when you trained (default: (128,96))')
     parser.add_argument('--model', type=str, default='resnet50', help='model type (default: resnet50)')
 

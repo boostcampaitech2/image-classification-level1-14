@@ -11,6 +11,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+
 from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
@@ -36,13 +37,15 @@ def get_lr(optimizer):
     for param_group in optimizer.param_groups:
         return param_group['lr']
 
-
 def grid_image(np_images, gts, preds, n=32, shuffle=False):
+
     batch_size = np_images.shape[0]
     assert n <= batch_size
 
     choices = random.choices(range(batch_size), k=n) if shuffle else list(range(n))
-    figure = plt.figure(figsize=(15, 20))  # cautions: hardcoded, 이미지 크기에 따라 figsize 를 조정해야 할 수 있습니다. T.T
+
+    figure = plt.figure(figsize=(12, 18 + 2))  # cautions: hardcoded, 이미지 크기에 따라 figsize 를 조정해야 할 수 있습니다. T.T
+
     plt.subplots_adjust(top=0.8)               # cautions: hardcoded, 이미지 크기에 따라 top 를 조정해야 할 수 있습니다. T.T
     n_grid = np.ceil(n ** 0.5)
     tasks = ["mask", "gender", "age"]
@@ -54,7 +57,7 @@ def grid_image(np_images, gts, preds, n=32, shuffle=False):
 
         gt_decoded_labels = MaskBaseDataset.decode_multi_class(gt)
         pred_decoded_labels = MaskBaseDataset.decode_multi_class(pred)
-        
+
         title = "\n".join([
             f"{task} - gt: {gt_label}, pred: {pred_label}"
             for gt_label, pred_label, task
@@ -92,6 +95,7 @@ def train(data_dir, model_dir, args):
     seed_everything(args.seed)
 
     save_dir = increment_path(os.path.join(model_dir, args.name))
+
     # -- settings
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
@@ -114,7 +118,6 @@ def train(data_dir, model_dir, args):
 
     # -- data_loader
     train_set, val_set = dataset.split_dataset()
-    
 
     train_loader = DataLoader(
         train_set,
@@ -122,7 +125,7 @@ def train(data_dir, model_dir, args):
         num_workers=multiprocessing.cpu_count()//2,
         shuffle=True,
         pin_memory=use_cuda,
-        # drop_last=True,
+        drop_last=True
     )
 
     val_loader = DataLoader(
@@ -131,7 +134,7 @@ def train(data_dir, model_dir, args):
         num_workers=multiprocessing.cpu_count()//2,
         shuffle=False,
         pin_memory=use_cuda,
-        # drop_last=True,
+        drop_last=True,
     )
 
     # -- model
@@ -156,7 +159,6 @@ def train(data_dir, model_dir, args):
     scheduler = ReduceLROnPlateau(optimizer,'min',factor=0.1, patience=2)
 
     # -- logging
-
     logger = SummaryWriter(log_dir=save_dir)
     with open(os.path.join(save_dir, 'config.json'), 'w', encoding='utf-8') as f:
         json.dump(vars(args), f, ensure_ascii=False, indent=4)
@@ -195,10 +197,11 @@ def train(data_dir, model_dir, args):
                 )
                 logger.add_scalar("Train/loss", train_loss, epoch * len(train_loader) + idx)
                 logger.add_scalar("Train/accuracy", train_acc, epoch * len(train_loader) + idx)
-                
+
                 loss_value = 0
                 matches = 0
-        
+
+        scheduler.step(loss_value)
 
         # val loop
         with torch.no_grad():
@@ -253,7 +256,7 @@ def train(data_dir, model_dir, args):
             logger.add_scalar("Val/loss", val_loss, epoch)
             logger.add_scalar("Val/accuracy", val_acc, epoch)
             logger.add_figure("results", figure, epoch)
-            scheduler.step(val_loss)
+
             print()
 
             if early_stop_count == 7:
