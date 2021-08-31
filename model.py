@@ -45,9 +45,16 @@ class MyModel(nn.Module):
         2. 나만의 모델 아키텍쳐를 디자인 해봅니다.
         3. 모델의 output_dimension 은 num_classes 로 설정해주세요.
         """
-    def __init__(self, model_name, pretrained=True, num_classes_mask, num_classes_gender, num_classes_age):
+    def __init__(self, model_name, pretrained=True, num_classes_mask=3, num_classes_gender=2, num_classes_age=3):
         super().__init__()
-        self.net = timm.create_model(model_name=model_name, pretrained=True)
+        self.num_classes_mask = num_classes_mask
+        self.num_classes_gender = num_classes_gender
+        self.num_claases_age = num_classes_age
+        
+        self.model_name = model_name
+        self.pretrained = pretrained
+        
+        self.net = timm.create_model(model_name=model_name, pretrained=pretrained)
         
         '''
 timm.list_models(pretrained=True)
