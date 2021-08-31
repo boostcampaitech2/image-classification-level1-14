@@ -65,18 +65,18 @@ class F1Loss(nn.Module):
         return 1 - f1.mean()
 
 
-minAge = 18
-maxAge = 60
 class AgeLoss(nn.Module):
-    def __init__(self):
+    def __init__(self, minAge=18, maxAge=60):
         super().__init__()
+        self.minAge = minAge
+        self.maxAge = maxAge
 
     def forward(self, agePred, ageLabel):
         # 각 확률의 총합을 1로 만든다  
         ageProbability = F.softmax(agePred, dim=1)
 
         # 그 확률에 대한 행렬을 모든 라벨이 순차적으로 있는 1차원 행렬에 곱한다
-        ageExpect = torch.sum(Variable(torch.arange(minAge, maxAge+1))*ageProbability,1)
+        ageExpect = torch.sum(Variable(torch.arange(self.minAge, self.maxAge+1))*ageProbability,1)
 
         # 해당 결괏값과 label값의 l1 loss를 구한다
         ageLoss = F.smooth_l1_loss(input=ageExpect, target=ageLabel.float())
