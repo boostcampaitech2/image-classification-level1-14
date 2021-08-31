@@ -7,7 +7,7 @@ image-classification-level1-14 created by GitHub Classroom
 ```
 [arg]
 seed = 2142
-epochs = 1
+epochs = 5
 dataset = MaskBaseDataset
 augmentation = BaseAugmentation
 resize = 128, 96
