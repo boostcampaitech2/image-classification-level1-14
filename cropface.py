@@ -20,7 +20,10 @@ def get_cropped_and_fixed_images():
 
     os.mkdir("/opt/ml/input/data/train/new_imgs")
 
-    cnt = 0
+    for id_index in tqdm(range(len(df)//7)):
+        normal_img_index = id_index*7 + 3
+        normal_path = df.iloc[normal_img_index].img_path
+        normal_img = cv2.imread(normal_path)
 
     for id_index in tqdm(range(len(df)//7)):
         normal_img_index = id_index*7 + 3

@@ -1,7 +1,6 @@
 import argparse
 import os
 from importlib import import_module
-import cropface_test
 
 import pandas as pd
 import torch
@@ -42,7 +41,7 @@ def inference(data_dir, model_dir, output_dir, args):
     print(f"model dir :  {model_dir}")
     model.eval()
 
-    img_root = os.path.join(data_dir, 'new_imgs')
+    img_root = os.path.join(data_dir, 'images')
     info_path = os.path.join(data_dir, 'info.csv')
     info = pd.read_csv(info_path)
 
@@ -81,17 +80,15 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     # Data and model checkpoints directories
-    parser.add_argument('--batch_size', type=int, default=64, help='input batch size for validing (default: 64)')
-    parser.add_argument('--resize', type=tuple, default=(260,200), help='resize size for image when you trained (default: (128,96))')
+    parser.add_argument('--batch_size', type=int, default=16, help='input batch size for validing (default: 64)')
+    parser.add_argument('--resize', type=tuple, default=(224,192), help='resize size for image when you trained (default: (128,96))')
     parser.add_argument('--model', type=str, default='resnet50', help='model type (default: resnet50)')
 
     # Container environment
     parser.add_argument('--data_dir', type=str, default=os.environ.get('SM_CHANNEL_EVAL', '/opt/ml/input/data/eval'))
-    parser.add_argument('--model_dir', type=str, default=os.environ.get('SM_CHANNEL_MODEL', '/opt/ml/code/new/args.model_dir/resnet50-crop-260'))
+    parser.add_argument('--model_dir', type=str, default=os.environ.get('SM_CHANNEL_MODEL', '/opt/ml/code/new/args.model_dir/resnet502'))
     parser.add_argument('--output_dir', type=str, default=os.environ.get('SM_OUTPUT_DATA_DIR', '/opt/ml/code/new/output'))
 
-    if not os.path.isdir("/opt/ml/input/data/eval/new_imgs"):
-        cropface_test.get_cropped_and_fixed_images()
     args = parser.parse_args()
 
     data_dir = args.data_dir

@@ -150,40 +150,62 @@ def train(data_dir, model_dir, args):
     num_classes_age = 3
     model_module = getattr(import_module(
         "model"), args.model)  # default: BaseModel
-    model = model_module(
-        num_classes_mask=num_classes_mask,
-        num_classes_gender=num_classes_gender,
-        num_classes_age=num_classes_age
+    model_mask = model_module(
+        num_classes_mask=num_classes_mask
     ).to(device)
-    model = torch.nn.DataParallel(model)
+    model_gender = model_module(
+        num_classes_mask=num_classes_mask
+    ).to(device)
+    model_age = model_module(
+        num_classes_mask=num_classes_mask
+    ).to(device)
+    model_mask = torch.nn.DataParallel(model_mask)
+    model_gender = torch.nn.DataParallel(model_gender)
+    model_age = torch.nn.DataParallel(model_age)
 
     # -- loss & metric
     criterion = create_criterion(args.criterion)  # default: cross_entropy
     opt_module = getattr(import_module("torch.optim"),
                          args.optimizer)  # default: SGD
-    optimizer = opt_module(
-        model.parameters(),
+    optimizer_mask = opt_module(
+        model_mask.parameters(),
         lr=args.lr,
         weight_decay=5e-4
     )
-    scheduler = ReduceLROnPlateau(optimizer, 'min', factor=0.1, patience=3)
+    optimizer_gender = opt_module(
+        model_gender.parameters(),
+        lr=args.lr,
+        weight_decay=5e-4
+    )
+    optimizer_age = opt_module(
+        model_age.parameters(),
+        lr=args.lr,
+        weight_decay=5e-4
+    )
+    scheduler_mask = ReduceLROnPlateau(optimizer_mask, 'min', factor=0.1, patience=3)
+    scheduler_gender = ReduceLROnPlateau(optimizer_gender, 'min', factor=0.1, patience=3)
+    scheduler_age = ReduceLROnPlateau(optimizer_age, 'min', factor=0.1, patience=3)
 
     # -- logging
     logger = SummaryWriter(log_dir=save_dir)
     with open(os.path.join(save_dir, 'config.json'), 'w', encoding='utf-8') as f:
         json.dump(vars(args), f, ensure_ascii=False, indent=4)
 
-    # earlystop
-    patience = 20
-    counter = 0
-
-    best_val_acc = 0
-    best_val_f1 = 0
-    best_val_loss = np.inf
+    best_val_acc_gender = 0
+    best_val_f1_gender = 0
+    best_val_loss_gender = np.inf
+    best_val_acc_age = 0
+    best_val_f1_age = 0
+    best_val_loss_age = np.inf
+    best_val_acc_mask = 0
+    best_val_f1_mask = 0
+    best_val_loss_mask = np.inf
 
     for epoch in range(args.epochs):
         # train loop
-        model.train()
+        model_age.train()
+        model_gender.train()
+        model_mask.train()
         loss_value = 0
         matches = 0
 
@@ -283,7 +305,9 @@ def train(data_dir, model_dir, args):
 
                 loss_value = 0
                 matches = 0
-        scheduler.step(float(loss))
+        scheduler_age.step(float(loss))
+        scheduler_gender.step(float(loss))
+        scheduler_mask.step(float(loss))
 
         # val loop
         with torch.no_grad():
@@ -341,13 +365,7 @@ def train(data_dir, model_dir, args):
                 torch.save(model.module.state_dict(), f"{save_dir}/bestF1.pth")
                 print('model path', f"{save_dir}")
                 best_val_f1 = val_f1
-                counter = 0
-            else:
-                counter += 1
 
-            if counter > patience:
-                print("Early Stopping...")
-                break
 
             torch.save(model.module.state_dict(), f"{save_dir}/last.pth")
             print(
