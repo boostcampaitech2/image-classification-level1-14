@@ -20,6 +20,10 @@ val_ratio=float(config['arg']['val_ratio'])
 criterion=config['arg']['criterion']
 lr_decay_step=int(config['arg']['lr_decay_step'])
 log_interval=int(config['arg']['log_interval'])
-name=config['arg']['name']
+name= config['arg']['model']
 data_dir=config['arg']['data_dir']
 model_dir=config['arg']['model_dir']
+
+test_dir=config['test']['test_dir']
+test_model_dir=config['test']['test_model_dir'] + '/' + name
+test_output_dir=config['test']['test_output_dir']

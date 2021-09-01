@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 from dataset import MaskBaseDataset, MaskSplitByProfileDataset
-from dataset import get_fixed_labeled_csv
+from dataset import get_fixed_labeled_csv, get_label
 
 from loss import create_criterion
 
@@ -152,7 +152,7 @@ def train(data_dir, model_dir, args):
         lr=args.lr,
         weight_decay=5e-4
     )
-    scheduler = ReduceLROnPlateau(optimizer,'min',factor=0.1, patience=3)
+    scheduler = ReduceLROnPlateau(optimizer,'min',factor=0.1, patience=2)
 
     # -- logging
     logger = SummaryWriter(log_dir=save_dir)
@@ -173,7 +173,7 @@ def train(data_dir, model_dir, args):
         matches = 0
         for idx, train_batch in enumerate(train_loader):
             inputs, mask_label, gender_label, age_label = train_batch
-            
+
             inputs = inputs.to(device)
             mask_label = mask_label.to(device)
             gender_label = gender_label.to(device)
@@ -215,7 +215,7 @@ def train(data_dir, model_dir, args):
                 
                 loss_value = 0
                 matches = 0
-        scheduler.step(float(loss))
+        scheduler.step(loss)
 
         # val loop
         with torch.no_grad():
@@ -272,7 +272,7 @@ def train(data_dir, model_dir, args):
                 best_val_acc = val_acc
 
             if val_f1 > best_val_f1:
-                print(f"New best model for val f1 : {val_f1:4.2%}! saving the best model..")
+                print(f"New best model for val f1 : {val_f1:4.3%}! saving the best model..")
                 torch.save(model.module.state_dict(), f"{save_dir}/bestF1.pth")
                 print('model path', f"{save_dir}")
                 best_val_f1 = val_f1
@@ -287,7 +287,7 @@ def train(data_dir, model_dir, args):
             torch.save(model.module.state_dict(), f"{save_dir}/last.pth")
             print(
                 f"[Val] acc : {val_acc:4.2%}, loss: {val_loss:4.2}, f1: {val_f1:4.2} || "
-                f"best acc : {best_val_acc:4.2%}, best loss: {best_val_loss:4.2}, best f1: {best_val_f1:4.2}"
+                f"best acc : {best_val_acc:4.2%}, best loss: {best_val_loss:4.2}, best f1: {best_val_f1:4.3}"
             )
             logger.add_scalar("Val/loss", val_loss, epoch)
             logger.add_scalar("Val/accuracy", val_acc, epoch)
@@ -339,4 +339,4 @@ if __name__ == '__main__':
     
     train(data_dir, model_dir, args)
 
-    # tensorboard --logdir "/opt/ml/code/p1_baseline/model/exp13"
+    # tensorboard --logdir "/opt/ml/code/p1_baseline/model"

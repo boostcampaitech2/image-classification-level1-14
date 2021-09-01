@@ -19,7 +19,7 @@ def load_model(saved_model, num_classes_mask,num_classes_gender,num_classes_age,
     # tar = tarfile.open(tarpath, 'r:gz')
     # tar.extractall(path=saved_model)
 
-    model_path = os.path.join(saved_model, 'bestAcc.pth')
+    model_path = os.path.join(saved_model, 'bestF1.pth')
     model.load_state_dict(torch.load(model_path, map_location=device))
 
     return model
@@ -79,15 +79,18 @@ def inference(data_dir, model_dir, output_dir, args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
+    
+    from ConfigParser import resize, batch_size, model, test_dir, test_model_dir, test_output_dir
+
     # Data and model checkpoints directories
-    parser.add_argument('--batch_size', type=int, default=32, help='input batch size for validing (default: 64)')
-    parser.add_argument('--resize', type=tuple, default=(128,96), help='resize size for image when you trained (default: (128,96))')
-    parser.add_argument('--model', type=str, default='resnet50', help='model type (default: resnet50)')
+    parser.add_argument('--batch_size', type=int, default=batch_size, help='input batch size for validing (default: 64)')
+    parser.add_argument('--resize', type=tuple, default=resize, help='resize size for image when you trained (default: (256, 192))')
+    parser.add_argument('--model', type=str, default=model, help='model type (default: efficient)')
 
     # Container environment
-    parser.add_argument('--data_dir', type=str, default=os.environ.get('SM_CHANNEL_EVAL', '/opt/ml/input/data/eval'))
-    parser.add_argument('--model_dir', type=str, default=os.environ.get('SM_CHANNEL_MODEL', '/opt/ml/code/p1_baseline/model/exp31'))
-    parser.add_argument('--output_dir', type=str, default=os.environ.get('SM_OUTPUT_DATA_DIR', '/opt/ml/code/p1_baseline/output'))
+    parser.add_argument('--data_dir', type=str, default=os.environ.get('SM_CHANNEL_EVAL', test_dir))
+    parser.add_argument('--model_dir', type=str, default=os.environ.get('SM_CHANNEL_MODEL', test_model_dir))
+    parser.add_argument('--output_dir', type=str, default=os.environ.get('SM_OUTPUT_DATA_DIR', test_output_dir))
 
     args = parser.parse_args()
 
