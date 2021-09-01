@@ -281,21 +281,22 @@ class StratifiedMaskDataset(MaskBaseDataset):
         super().__init__(data_dir, mean, std)
 
     def setup(self):
-        self.create_stratified_index(self.val_ratio)        
+        self.create_stratified_index(self.val_ratio)
         profiles = os.listdir(self.data_dir)
         index = 0
-        
+
         for profile in profiles:
             if profile.startswith("."):  # "." 로 시작하는 파일은 무시합니다
                 continue
-                
+
             img_folder = os.path.join(self.data_dir, profile)
             for file_name in os.listdir(img_folder):
                 _file_name, ext = os.path.splitext(file_name)
                 if _file_name not in self._file_names:  # "." 로 시작하는 파일 및 invalid 한 파일들은 무시합니다
                     continue
 
-                img_path = os.path.join(self.data_dir, profile, file_name)  # (resized_data, 000004_male_Asian_54, mask1.jpg)
+                # (resized_data, 000004_male_Asian_54, mask1.jpg)
+                img_path = os.path.join(self.data_dir, profile, file_name)
                 mask_label = self._file_names[_file_name]
 
                 id, gender, race, age = profile.split("_")
@@ -306,13 +307,12 @@ class StratifiedMaskDataset(MaskBaseDataset):
                 self.mask_labels.append(mask_label)
                 self.gender_labels.append(gender_label)
                 self.age_labels.append(age_label)
-                
+
                 if self.class_profile[profile]:
                     self.val_idx.append(index)
                 else:
                     self.train_idx.append(index)
                 index += 1
-
 
     def __getitem__(self, index):
         assert self.transform is not None, ".set_tranform 메소드를 이용하여 transform 을 주입해주세요"
@@ -321,10 +321,11 @@ class StratifiedMaskDataset(MaskBaseDataset):
         mask_label = self.get_mask_label(index)
         gender_label = self.get_gender_label(index)
         age_label = self.get_age_label(index)
-        multi_class_label = self.encode_multi_class(mask_label, gender_label, age_label)
+        multi_class_label = self.encode_multi_class(
+            mask_label, gender_label, age_label)
 
         image_transform = self.transform(image)
-        return image_transform, multi_class_label
+        return image_transform, mask_label, gender_label, age_label
 
     def __len__(self):
         return len(self.image_paths)
@@ -353,7 +354,6 @@ class StratifiedMaskDataset(MaskBaseDataset):
         age_label = multi_class_label % 3
         return mask_label, gender_label, age_label
 
-
     def split_dataset(self) -> Tuple[Subset, Subset]:
         """
         데이터셋을 train 과 val 로 나눕니다,
@@ -361,15 +361,13 @@ class StratifiedMaskDataset(MaskBaseDataset):
         torch.utils.data.Subset 클래스 둘로 나눕니다.
         구현이 어렵지 않으니 구글링 혹은 IDE (e.g. pycharm) 의 navigation 기능을 통해 코드를 한 번 읽어보는 것을 추천드립니다^^
         """
-        
+
         train_set = torch.utils.data.Subset(self, self.train_idx)
         val_set = torch.utils.data.Subset(self, self.val_idx)
         return train_set, val_set
-    
-    
-    
+
     def create_stratified_index(self, val_ratio):
-        df = pd.DataFrame(None, columns = ['age', 'gender', 'path'])
+        df = pd.DataFrame(None, columns=['age', 'gender', 'path'])
         profiles = os.listdir(self.data_dir)
         for p in profiles:
             if p.startswith('.'):
@@ -390,13 +388,14 @@ class StratifiedMaskDataset(MaskBaseDataset):
             else:
                 new_row['age'] = 2
             new_row['path'] = p
-            df = df.append(new_row, ignore_index = True)
+            df = df.append(new_row, ignore_index=True)
 
-        classes = list(range(6)) # two gender * three age case
+        classes = list(range(6))  # two gender * three age case
         index = 0
-        for g in df.gender.unique(): # [0,1]
-            for a in df.age.unique(): # [0,1,2]
-                df.loc[(df.gender == g) & (df.age == a),'classes'] = classes[index]
+        for g in df.gender.unique():  # [0,1]
+            for a in df.age.unique():  # [0,1,2]
+                df.loc[(df.gender == g) & (df.age == a),
+                       'classes'] = classes[index]
                 index += 1
 
         train_idx = []
@@ -412,12 +411,13 @@ class StratifiedMaskDataset(MaskBaseDataset):
             val_idx += class_idx[split_idx:]
 
         val_paths = df.iloc[val_idx]['path']
-        profile_val = {p:1 for p in val_paths} # 1 for val
+        profile_val = {p: 1 for p in val_paths}  # 1 for val
         train_path = df.iloc[train_idx]['path']
 
         for p in train_path:
-            profile_val[p] = 0 # 0 for train
+            profile_val[p] = 0  # 0 for train
         self.class_profile = profile_val
+
 
 class MaskSplitByProfileDataset(MaskBaseDataset):
     """
