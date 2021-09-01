@@ -42,21 +42,23 @@ class BaseModel(nn.Module):
 
 # Custom Model Template
 class MyModel(nn.Module):
-        """
-        1. 위와 같이 생성자의 parameter 에 num_claases 를 포함해주세요.
-        2. 나만의 모델 아키텍쳐를 디자인 해봅니다.
-        3. 모델의 output_dimension 은 num_classes 로 설정해주세요.
-        """
+    """
+    1. 위와 같이 생성자의 parameter 에 num_claases 를 포함해주세요.
+    2. 나만의 모델 아키텍쳐를 디자인 해봅니다.
+    3. 모델의 output_dimension 은 num_classes 로 설정해주세요.
+    """
+
     def __init__(self, model_name, pretrained=True, num_classes_mask=3, num_classes_gender=2, num_classes_age=3):
         super().__init__()
         self.num_classes_mask = num_classes_mask
         self.num_classes_gender = num_classes_gender
         self.num_claases_age = num_classes_age
-        
+
         self.model_name = model_name
         self.pretrained = pretrained
-        
-        self.net = timm.create_model(model_name=model_name, pretrained=pretrained)
+
+        self.net = timm.create_model(
+            model_name=model_name, pretrained=pretrained)
         self.net = pretrainedmodels.__dict__['resnet50'](pretrained="imagenet")
 
         self.linear_mask = nn.Sequential(nn.Linear(2048, num_classes_mask))
@@ -75,9 +77,10 @@ class MyModel(nn.Module):
         age = self.linear_age(x)
         return {'mask': mask, 'gender': gender, 'age': age}
 
+
 class efficient(nn.Module):
     def __init__(self, num_classes_mask, num_classes_gender, num_classes_age):
-        super(efficient,self).__init__()
+        super(efficient, self).__init__()
 
         self.net = EfficientNet.from_pretrained('efficientnet-b4')
 
@@ -94,13 +97,14 @@ class efficient(nn.Module):
         age = self.linear_age(x)
         return {'mask': mask, 'gender': gender, 'age': age}
 
+
 class vit16(nn.Module):
     def __init__(self, num_classes, pretrained=True):
         super(vit16, self).__init__()
-        vit_model_sample = timm.create_model(model_name = "vit_base_patch16_224", # 불러올 모델 architecture,
-                                     num_classes=num_classes, # 예측 해야하는 class 수
-                                     pretrained = True # 사전학습된 weight 불러오기
-                                     )
+        vit_model_sample = timm.create_model(model_name="vit_base_patch16_224",  # 불러올 모델 architecture,
+                                             num_classes=num_classes,  # 예측 해야하는 class 수
+                                             pretrained=True  # 사전학습된 weight 불러오기
+                                             )
         self.model = vit_model_sample
 
     def forward(self, x):

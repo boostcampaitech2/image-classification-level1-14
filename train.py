@@ -95,7 +95,12 @@ def increment_path(path, exist_ok=False):
 
 
 def train(data_dir, model_dir, args):
-    wandb.init(project='my-test-project', entity='tkdlqh2')
+    # -- use wandb
+    if args.use_wandb:
+        wandb.init(project=args.wandb_project_name, entity=args.wandb_ID)
+    else:
+        pass
+
     seed_everything(args.seed)
     save_dir = increment_path(os.path.join(model_dir, args.name))
 
@@ -176,7 +181,7 @@ def train(data_dir, model_dir, args):
         json.dump(vars(args), f, ensure_ascii=False, indent=4)
 
     # earlystop
-    patience = 20
+    patience = 7
     counter = 0
 
     best_val_acc = 0
@@ -200,7 +205,7 @@ def train(data_dir, model_dir, args):
 
             optimizer.zero_grad()
 
-            if args.cutMix and np.random.random() < args.cutMixProb:
+            if args.use_cut_mix and np.random.random() < args.cutMixProb:
                 lam = np.random.beta(1, 1)
                 rand_index = torch.randperm(inputs.size()[0]).to(device)
 
@@ -373,7 +378,7 @@ if __name__ == '__main__':
     # load_dotenv(verbose=True)
 
     from ConfigParser import seed, epochs, dataset, augmentation, resize, batch_size, valid_batch_size, model, optimizer, lr, val_ratio, criterion, lr_decay_step, log_interval, name, model_name, pretrained
-
+    from ConfigParser import use_cropped_data, use_cut_mix, cut_mix_prob, use_wandb, wandb_ID, wandb_project_name
     parser.add_argument('--seed', type=int, default=seed,
                         help='random seed (config: ' + str(seed) + ')')
     parser.add_argument('--epochs', type=int, default=epochs,
@@ -404,29 +409,42 @@ if __name__ == '__main__':
                         help='how many batches to wait before logging training status (config: '+str(log_interval)+')')
     parser.add_argument('--name', default=name,
                         help='model save at {SM_MODEL_DIR}/{name}')
-    parser.add_argument('--cutMix', default=True,
+    parser.add_argument('--use_cut_mix', type=bool, default=use_cut_mix,
                         help='Choose to use cut mix')
-    parser.add_argument('--cutMixProb', default=0.3,
+    parser.add_argument('--cutMixProb', type=float, default=cut_mix_prob,
                         help='When you do cut mix, it do cut mix in this probability')
+    parser.add_argument('--use_wandb', type=bool, default=use_wandb,
+                        help='Choose which to use wandb')
+    parser.add_argument('--wandb_ID', type=str, default=wandb_ID,
+                        help='Your wandb ID')
+    parser.add_argument('--wandb_project_name', type=str, default=wandb_project_name,
+                        help='Your wandb project name to log')
+
     if not os.path.isfile("/opt/ml/code/labeled_data.csv"):
         print("You have to make error-fixed csv!!")
         get_fixed_labeled_csv()
 
     # Container environment
-    parser.add_argument('--data_dir', type=str,
-                        default=os.environ.get('SM_CHANNEL_TRAIN', '/opt/ml/input/data/train/new_imgs'))
+    if use_cropped_data:
+        if os.path.isfile("/opt/ml/code/labeled_data.csv"):
+            if not os.path.isdir("/opt/ml/input/data/train/new_imgs"):
+                print("Saving Cropped images")
+                cropface.get_cropped_and_fixed_images()
+        else:
+            print("You have to make error-fixed csv!!")
+            get_fixed_labeled_csv()
+            print("Saving Cropped images")
+            cropface.get_cropped_and_fixed_images()
+
+        parser.add_argument('--data_dir', type=str,
+                            default=os.environ.get('SM_CHANNEL_TRAIN', '/opt/ml/input/data/train/new_imgs'))
+    else:
+        parser.add_argument('--data_dir', type=str,
+                            default=os.environ.get('SM_CHANNEL_TRAIN', '/opt/ml/input/data/train/images'))
+
     parser.add_argument('--model_dir', type=str,
                         default=os.environ.get('SM_MODEL_DIR', '/opt/ml/input/model'))
 
-    if os.path.isfile("/opt/ml/code/labeled_data.csv"):
-        if not os.path.isdir("/opt/ml/input/data/train/new_imgs"):
-            print("Saving Cropped images")
-            cropface.get_cropped_and_fixed_images()
-    else:
-        print("You have to make error-fixed csv!!")
-        get_fixed_labeled_csv()
-        print("Saving Cropped images")
-        cropface.get_cropped_and_fixed_images()
     args = parser.parse_args()
     print(args)
     data_dir = args.data_dir

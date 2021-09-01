@@ -84,16 +84,17 @@ def inference(data_dir, model_dir, output_dir, args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-
+    from ConfigParser import batch_size, resize, model
     # Data and model checkpoints directories
-    parser.add_argument('--batch_size', type=int, default=64,
+    parser.add_argument('--batch_size', type=int, default=batch_size,
                         help='input batch size for validing (default: 64)')
-    parser.add_argument('--resize', type=tuple, default=(260, 200),
+    parser.add_argument('--resize', type=tuple, default=resize,
                         help='resize size for image when you trained (default: (128,96))')
-    parser.add_argument('--model', type=str, default='efficient',
+    parser.add_argument('--model', type=str, default=model,
                         help='model type (default: resnet50)')
 
     # Container environment
+    # config 물어보기
     parser.add_argument('--data_dir', type=str, default=os.environ.get(
         'SM_CHANNEL_EVAL', '/opt/ml/input/data/eval'))
     parser.add_argument('--model_dir', type=str, default=os.environ.get(
