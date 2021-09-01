@@ -1,1 +1,3 @@
 **/__pycache__
+**/args.model_dir
+**/wandb
