@@ -22,20 +22,31 @@ def get_cropped_and_fixed_images():
 
     cnt = 0
 
-    for index in tqdm(range(len(df))):
+    for id_index in tqdm(range(len(df)//7)):
+        normal_img_index = id_index*7 + 3
+        normal_path = df.iloc[normal_img_index].img_path
+        normal_img = cv2.imread(normal_path)
+        normal_img = cv2.cvtColor(normal_img, cv2.COLOR_BGR2RGB)
 
-        path = df.iloc[index].img_path
-        img = cv2.imread(path)
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img_fixed_dir = '_'.join(
+            [df.iloc[id_index*7].id, df.iloc[id_index*7].gender, "Asian", str(df.iloc[id_index*7].age)])
+
+        tmp = os.path.join(new_img_dir, img_fixed_dir)
+
+        try:
+            os.mkdir(tmp)
+        except:
+            pass
 
         # mtcnn 적용
-        boxes, probs = mtcnn.detect(img)
+        boxes, _ = mtcnn.detect(normal_img)
+        padding = 50
 
         if isinstance(boxes, np.ndarray):
-            xmin = int(boxes[0, 0])-30
-            ymin = int(boxes[0, 1])-30
-            xmax = int(boxes[0, 2])+30
-            ymax = int(boxes[0, 3])+30
+            xmin = int(boxes[0, 0])-padding
+            ymin = int(boxes[0, 1])-padding
+            xmax = int(boxes[0, 2])+padding
+            ymax = int(boxes[0, 3])+padding
 
             if xmin < 0:
                 xmin = 0
@@ -46,16 +57,19 @@ def get_cropped_and_fixed_images():
             if ymax > 512:
                 ymax = 512
 
-            img = img[ymin:ymax, xmin:xmax, :]
         # boexes size 확인
         else:
-            result_detected = RetinaFace.detect_faces(path)
+            result_detected = RetinaFace.detect_faces(normal_img)
 
             if type(result_detected) == dict:
-                xmin = int(result_detected["face_1"]["facial_area"][0]) - 30
-                ymin = int(result_detected["face_1"]["facial_area"][1]) - 30
-                xmax = int(result_detected["face_1"]["facial_area"][2]) + 30
-                ymax = int(result_detected["face_1"]["facial_area"][3]) + 30
+                xmin = int(result_detected["face_1"]
+                           ["facial_area"][0]) - padding
+                ymin = int(result_detected["face_1"]
+                           ["facial_area"][1]) - padding
+                xmax = int(result_detected["face_1"]
+                           ["facial_area"][2]) + padding
+                ymax = int(result_detected["face_1"]
+                           ["facial_area"][3]) + padding
 
                 if xmin < 0:
                     xmin = 0
@@ -65,24 +79,18 @@ def get_cropped_and_fixed_images():
                     xmax = 384
                 if ymax > 512:
                     ymax = 512
-
-                img = img[ymin:ymax, xmin:xmax, :]
-
             else:
-                pass
+                xmin = 0
+                ymin = 0
+                xmax = 384
+                ymax = 512
 
-        img_fixed_dir = '_'.join(
-            [df.iloc[index].id, df.iloc[index].gender, "Asian", str(df.iloc[index].age)])
-
-        tmp = os.path.join(new_img_dir, img_fixed_dir)
-        cnt += 1
-
-        try:
-            os.mkdir(tmp)
-        except:
-            pass
-
-        plt.imsave(os.path.join(tmp, df.iloc[index].stem+'.jpg'), img)
+        for img_type_index in range(7):
+            img_index = id_index*7+img_type_index
+            img = df.iloc[img_index].img_path
+            print(type(ymin), type(ymax), type(xmin), type(xmax))
+            img = img[ymin:ymax, xmin:xmax, :]
+            plt.imsave(os.path.join(tmp, df.iloc[img_index].stem+'.jpg'), img)
 
 
 if __name__ == '__main__':
