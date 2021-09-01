@@ -16,7 +16,7 @@ def load_model(saved_model, num_classes_mask, num_classes_gender, num_classes_ag
     # model.py import 하고 해당 모듈의 args.model class 불러옴
     model_module = getattr(import_module(
         "model"), args.model)  # default: BaseModel
-    model = model_module(num_classes_mask=num_classes_mask,
+    model = model_module('efficientnet_b4', num_classes_mask=num_classes_mask,
                          num_classes_gender=num_classes_gender, num_classes_age=num_classes_age)
 
     # tarpath = os.path.join(saved_model, 'best.tar.gz')
@@ -98,7 +98,7 @@ if __name__ == '__main__':
     parser.add_argument('--data_dir', type=str, default=os.environ.get(
         'SM_CHANNEL_EVAL', '/opt/ml/input/data/eval'))
     parser.add_argument('--model_dir', type=str, default=os.environ.get(
-        'SM_CHANNEL_MODEL', '/opt/ml/input/model/efficient'))
+        'SM_CHANNEL_MODEL', '/opt/ml/input/model/exp8'))
     parser.add_argument('--output_dir', type=str,
                         default=os.environ.get('SM_OUTPUT_DATA_DIR', '/opt/ml/output'))
 
