@@ -39,13 +39,14 @@ def get_cropped_and_fixed_images():
 
         # mtcnn 적용
         boxes, _ = mtcnn.detect(normal_img)
-        padding = 50
+        padding_x = 50
+        padding_y = 70
 
         if isinstance(boxes, np.ndarray):
-            xmin = int(boxes[0, 0])-padding
-            ymin = int(boxes[0, 1])-padding
-            xmax = int(boxes[0, 2])+padding
-            ymax = int(boxes[0, 3])+padding
+            xmin = int(boxes[0, 0])-padding_x
+            ymin = int(boxes[0, 1])-padding_x
+            xmax = int(boxes[0, 2])+padding_y
+            ymax = int(boxes[0, 3])+padding_y
 
             if xmin < 0:
                 xmin = 0
@@ -62,13 +63,13 @@ def get_cropped_and_fixed_images():
 
             if type(result_detected) == dict:
                 xmin = int(result_detected["face_1"]
-                           ["facial_area"][0]) - padding
+                           ["facial_area"][0]) - padding_x
                 ymin = int(result_detected["face_1"]
-                           ["facial_area"][1]) - padding
+                           ["facial_area"][1]) - padding_x
                 xmax = int(result_detected["face_1"]
-                           ["facial_area"][2]) + padding
+                           ["facial_area"][2]) + padding_y
                 ymax = int(result_detected["face_1"]
-                           ["facial_area"][3]) + padding
+                           ["facial_area"][3]) + padding_y
 
                 if xmin < 0:
                     xmin = 0
