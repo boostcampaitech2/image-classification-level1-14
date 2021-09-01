@@ -26,7 +26,6 @@ def get_cropped_and_fixed_images():
         normal_img_index = id_index*7 + 3
         normal_path = df.iloc[normal_img_index].img_path
         normal_img = cv2.imread(normal_path)
-        normal_img = cv2.cvtColor(normal_img, cv2.COLOR_BGR2RGB)
 
         img_fixed_dir = '_'.join(
             [df.iloc[id_index*7].id, df.iloc[id_index*7].gender, "Asian", str(df.iloc[id_index*7].age)])
@@ -87,8 +86,9 @@ def get_cropped_and_fixed_images():
 
         for img_type_index in range(7):
             img_index = id_index*7+img_type_index
-            img = df.iloc[img_index].img_path
-            print(type(ymin), type(ymax), type(xmin), type(xmax))
+            img_path = df.iloc[img_index].img_path
+            img = cv2.imread(img_path)
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             img = img[ymin:ymax, xmin:xmax, :]
             plt.imsave(os.path.join(tmp, df.iloc[img_index].stem+'.jpg'), img)
 
