@@ -46,6 +46,7 @@ class F1Loss(nn.Module):
         super().__init__()
         self.classes = classes
         self.epsilon = epsilon
+
     def forward(self, y_pred, y_true):
         assert y_pred.ndim == 2
         assert y_true.ndim == 1
@@ -63,6 +64,27 @@ class F1Loss(nn.Module):
         f1 = 2 * (precision * recall) / (precision + recall + self.epsilon)
         f1 = f1.clamp(min=self.epsilon, max=1 - self.epsilon)
         return 1 - f1.mean()
+
+
+class AgeLoss(nn.Module):
+    def __init__(self, minAge=18, maxAge=60):
+        super().__init__()
+        self.minAge = minAge
+        self.maxAge = maxAge
+
+    def forward(self, agePred, ageLabel):
+        # 각 확률의 총합을 1로 만든다
+        ageProbability = F.softmax(agePred, dim=1)
+
+        # 그 확률에 대한 행렬을 모든 라벨이 순차적으로 있는 1차원 행렬에 곱한다
+        ageExpect = torch.sum(Variable(torch.arange(
+            self.minAge, self.maxAge+1))*ageProbability, 1)
+
+        # 해당 결괏값과 label값의 l1 loss를 구한다
+        ageLoss = F.smooth_l1_loss(input=ageExpect, target=ageLabel.float())
+
+        return ageLoss
+
 
 _criterion_entrypoints = {
     'cross_entropy': nn.CrossEntropyLoss,

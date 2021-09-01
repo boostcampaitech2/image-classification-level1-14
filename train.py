@@ -151,9 +151,11 @@ def train(data_dir, model_dir, args):
     model_module = getattr(import_module(
         "model"), args.model)  # default: BaseModel
     model = model_module(
+        model_name=model_name,
         num_classes_mask=num_classes_mask,
         num_classes_gender=num_classes_gender,
-        num_classes_age=num_classes_age
+        num_classes_age=num_classes_age,
+        pretrained=pretrained
     ).to(device)
     model = torch.nn.DataParallel(model)
 
