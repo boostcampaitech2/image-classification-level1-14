@@ -95,7 +95,7 @@ def increment_path(path, exist_ok=False):
 
 
 def train(data_dir, model_dir, args):
-    wandb.init(project='boostcamp_image_classification', entity='chalim')
+    wandb.init(project='my-test-project', entity='tkdlqh2')
     seed_everything(args.seed)
     save_dir = increment_path(os.path.join(model_dir, args.name))
 
@@ -414,9 +414,9 @@ if __name__ == '__main__':
     parser.add_argument('--data_dir', type=str,
                         default=os.environ.get('SM_CHANNEL_TRAIN', '/opt/ml/input/data/train/new_imgs'))
     parser.add_argument('--model_dir', type=str,
-                        default=os.environ.get('SM_MODEL_DIR', '/opt/ml/code/baseline/model'))
+                        default=os.environ.get('SM_MODEL_DIR', '/opt/ml/input/model'))
 
-    if os.path.isfile("/opt/ml/code/baseline/labeled_data.csv"):
+    if os.path.isfile("/opt/ml/code/labeled_data.csv"):
         if not os.path.isdir("/opt/ml/input/data/train/new_imgs"):
             print("Saving Cropped images")
             cropface.get_cropped_and_fixed_images()
@@ -427,9 +427,7 @@ if __name__ == '__main__':
         cropface.get_cropped_and_fixed_images()
     args = parser.parse_args()
     print(args)
-    args.data_dir = '/opt/ml/input/data/train/images'
     data_dir = args.data_dir
-    args.model_dir = 'args.model_dir'
     model_dir = args.model_dir
 
     train(data_dir, model_dir, args)

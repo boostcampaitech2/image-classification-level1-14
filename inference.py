@@ -11,10 +11,13 @@ from dataset import TestDataset, MaskBaseDataset
 
 import multiprocessing
 
-def load_model(saved_model, num_classes_mask,num_classes_gender,num_classes_age, device):
+
+def load_model(saved_model, num_classes_mask, num_classes_gender, num_classes_age, device):
     # model.py import 하고 해당 모듈의 args.model class 불러옴
-    model_module = getattr(import_module("model"), args.model)  # default: BaseModel
-    model = model_module(num_classes_mask=num_classes_mask, num_classes_gender=num_classes_gender, num_classes_age=num_classes_age)
+    model_module = getattr(import_module(
+        "model"), args.model)  # default: BaseModel
+    model = model_module(num_classes_mask=num_classes_mask,
+                         num_classes_gender=num_classes_gender, num_classes_age=num_classes_age)
 
     # tarpath = os.path.join(saved_model, 'best.tar.gz')
     # tar = tarfile.open(tarpath, 'r:gz')
@@ -37,7 +40,8 @@ def inference(data_dir, model_dir, output_dir, args):
     num_classes_gender = 2
     num_classes_age = 3
 
-    model = load_model(model_dir, num_classes_mask,num_classes_gender,num_classes_age,device).to(device)
+    model = load_model(model_dir, num_classes_mask,
+                       num_classes_gender, num_classes_age, device).to(device)
     model = torch.nn.DataParallel(model)
     print(f"model dir :  {model_dir}")
     model.eval()
@@ -67,7 +71,8 @@ def inference(data_dir, model_dir, output_dir, args):
             mask_preds = torch.argmax(outs['mask'], dim=-1)
             gender_preds = torch.argmax(outs['gender'], dim=-1)
             age_preds = torch.argmax(outs['age'], dim=-1)
-            pred = MaskBaseDataset.encode_multi_class(mask_preds, gender_preds, age_preds)
+            pred = MaskBaseDataset.encode_multi_class(
+                mask_preds, gender_preds, age_preds)
 
             preds.extend(pred.cpu().numpy())
 
@@ -81,14 +86,20 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     # Data and model checkpoints directories
-    parser.add_argument('--batch_size', type=int, default=64, help='input batch size for validing (default: 64)')
-    parser.add_argument('--resize', type=tuple, default=(260,200), help='resize size for image when you trained (default: (128,96))')
-    parser.add_argument('--model', type=str, default='resnet50', help='model type (default: resnet50)')
+    parser.add_argument('--batch_size', type=int, default=64,
+                        help='input batch size for validing (default: 64)')
+    parser.add_argument('--resize', type=tuple, default=(260, 200),
+                        help='resize size for image when you trained (default: (128,96))')
+    parser.add_argument('--model', type=str, default='efficient',
+                        help='model type (default: resnet50)')
 
     # Container environment
-    parser.add_argument('--data_dir', type=str, default=os.environ.get('SM_CHANNEL_EVAL', '/opt/ml/input/data/eval'))
-    parser.add_argument('--model_dir', type=str, default=os.environ.get('SM_CHANNEL_MODEL', '/opt/ml/code/new/args.model_dir/resnet50-crop-260'))
-    parser.add_argument('--output_dir', type=str, default=os.environ.get('SM_OUTPUT_DATA_DIR', '/opt/ml/code/new/output'))
+    parser.add_argument('--data_dir', type=str, default=os.environ.get(
+        'SM_CHANNEL_EVAL', '/opt/ml/input/data/eval'))
+    parser.add_argument('--model_dir', type=str, default=os.environ.get(
+        'SM_CHANNEL_MODEL', '/opt/ml/input/model/efficient'))
+    parser.add_argument('--output_dir', type=str,
+                        default=os.environ.get('SM_OUTPUT_DATA_DIR', '/opt/ml/output'))
 
     if not os.path.isdir("/opt/ml/input/data/eval/new_imgs"):
         cropface_test.get_cropped_and_fixed_images()
