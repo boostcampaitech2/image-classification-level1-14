@@ -17,10 +17,7 @@ import pandas as pd
 from albumentations import *
 from albumentations.pytorch import ToTensorV2
 
-import matplotlib.pyplot as plt
-from facenet_pytorch import MTCNN
-import os, cv2
-from tqdm import tqdm
+import csv
 
 IMG_EXTENSIONS = [
     ".jpg", ".JPG", ".jpeg", ".JPEG", ".png",
@@ -35,7 +32,7 @@ def is_image_file(filename):
 class BaseAugmentation:
     def __init__(self, resize, mean, std, **args):
         self.transform = Compose([
-            Resize(resize[0],resize[1]),
+            Resize(resize[0], resize[1]),
             Normalize(mean=mean, std=std, max_pixel_value=255.0, p=1.0),
             ToTensorV2(p=1.0)
         ])
@@ -64,11 +61,16 @@ class AddGaussianNoise(object):
 class CustomAugmentation:
     def __init__(self, resize, mean, std, **args):
         self.transform = Compose([
-            Resize(resize[0],resize[1]),
-            ColorJitter(brightness=(1, 2)),
+            Resize(resize[0], resize[1]),
+            HorizontalFlip(p=0.5),
+            # ShiftScaleRotate(p=0.5),
+            HueSaturationValue(hue_shift_limit=0.2, sat_shift_limit=0.2,
+                               val_shift_limit=0.2, p=0.5),  # 색조, 채도 값
+            RandomBrightnessContrast(
+                brightness_limit=(-0.1, 0.1), contrast_limit=(-0.1, 0.1), p=0.5),
+            GaussNoise(p=0.5),
             Normalize(mean=mean, std=std, max_pixel_value=255.0, p=1.0),
-            ToTensorV2(p=1.0)
-            # AddGaussianNoise()
+            ToTensorV2(p=1.0),
         ])
 
     def __call__(self, image):
@@ -93,7 +95,8 @@ class GenderLabels(int, Enum):
         elif value == "female":
             return cls.FEMALE
         else:
-            raise ValueError(f"Gender value should be either 'male' or 'female', {value}")
+            raise ValueError(
+                f"Gender value should be either 'male' or 'female', {value}")
 
 
 class AgeLabels(int, Enum):
@@ -158,7 +161,8 @@ class MaskBaseDataset(Dataset):
                 if _file_name not in self._file_names:  # "." 로 시작하는 파일 및 invalid 한 파일들은 무시합니다
                     continue
 
-                img_path = os.path.join(self.data_dir, profile, file_name)  # (resized_data, 000004_male_Asian_54, mask1.jpg)
+                # (resized_data, 000004_male_Asian_54, mask1.jpg)
+                img_path = os.path.join(self.data_dir, profile, file_name)
                 mask_label = self._file_names[_file_name]
 
                 id, gender, race, age = profile.split("_")
@@ -173,7 +177,8 @@ class MaskBaseDataset(Dataset):
     def calc_statistics(self):
         has_statistics = self.mean is not None and self.std is not None
         if not has_statistics:
-            print("[Warning] Calculating statistics... It can take a long time depending on your CPU machine")
+            print(
+                "[Warning] Calculating statistics... It can take a long time depending on your CPU machine")
             sums = []
             squared = []
             for image_path in self.image_paths[:3000]:
@@ -215,6 +220,10 @@ class MaskBaseDataset(Dataset):
         return Image.open(image_path).convert('RGB')
 
     @staticmethod
+    def encode_multi_class(mask_label, gender_label, age_label) -> int:
+        return mask_label * 6 + gender_label * 3 + age_label
+
+    @staticmethod
     def decode_multi_class(multi_class_label) -> Tuple[MaskLabels, GenderLabels, AgeLabels]:
         mask_label = (multi_class_label // 6) % 3
         gender_label = (multi_class_label // 3) % 2
@@ -244,8 +253,6 @@ class MaskBaseDataset(Dataset):
         train_set, val_set = random_split(self, [n_train, n_val])
         return train_set, val_set
 
-def encode_multi_class(mask_label, gender_label, age_label) -> int:
-    return mask_label * 6 + gender_label * 3 + age_label
 
 class StratifiedMaskDataset(MaskBaseDataset):
     num_classes = 3 * 2 * 3
@@ -274,21 +281,22 @@ class StratifiedMaskDataset(MaskBaseDataset):
         super().__init__(data_dir, mean, std)
 
     def setup(self):
-        self.create_stratified_index(self.val_ratio)        
+        self.create_stratified_index(self.val_ratio)
         profiles = os.listdir(self.data_dir)
         index = 0
-        
+
         for profile in profiles:
             if profile.startswith("."):  # "." 로 시작하는 파일은 무시합니다
                 continue
-                
+
             img_folder = os.path.join(self.data_dir, profile)
             for file_name in os.listdir(img_folder):
                 _file_name, ext = os.path.splitext(file_name)
                 if _file_name not in self._file_names:  # "." 로 시작하는 파일 및 invalid 한 파일들은 무시합니다
                     continue
 
-                img_path = os.path.join(self.data_dir, profile, file_name)  # (resized_data, 000004_male_Asian_54, mask1.jpg)
+                # (resized_data, 000004_male_Asian_54, mask1.jpg)
+                img_path = os.path.join(self.data_dir, profile, file_name)
                 mask_label = self._file_names[_file_name]
 
                 id, gender, race, age = profile.split("_")
@@ -299,13 +307,12 @@ class StratifiedMaskDataset(MaskBaseDataset):
                 self.mask_labels.append(mask_label)
                 self.gender_labels.append(gender_label)
                 self.age_labels.append(age_label)
-                
+
                 if self.class_profile[profile]:
                     self.val_idx.append(index)
                 else:
                     self.train_idx.append(index)
                 index += 1
-
 
     def __getitem__(self, index):
         assert self.transform is not None, ".set_tranform 메소드를 이용하여 transform 을 주입해주세요"
@@ -314,10 +321,11 @@ class StratifiedMaskDataset(MaskBaseDataset):
         mask_label = self.get_mask_label(index)
         gender_label = self.get_gender_label(index)
         age_label = self.get_age_label(index)
-        multi_class_label = self.encode_multi_class(mask_label, gender_label, age_label)
+        multi_class_label = self.encode_multi_class(
+            mask_label, gender_label, age_label)
 
         image_transform = self.transform(image)
-        return image_transform, multi_class_label
+        return image_transform, mask_label, gender_label, age_label
 
     def __len__(self):
         return len(self.image_paths)
@@ -346,7 +354,6 @@ class StratifiedMaskDataset(MaskBaseDataset):
         age_label = multi_class_label % 3
         return mask_label, gender_label, age_label
 
-
     def split_dataset(self) -> Tuple[Subset, Subset]:
         """
         데이터셋을 train 과 val 로 나눕니다,
@@ -354,15 +361,13 @@ class StratifiedMaskDataset(MaskBaseDataset):
         torch.utils.data.Subset 클래스 둘로 나눕니다.
         구현이 어렵지 않으니 구글링 혹은 IDE (e.g. pycharm) 의 navigation 기능을 통해 코드를 한 번 읽어보는 것을 추천드립니다^^
         """
-        
+
         train_set = torch.utils.data.Subset(self, self.train_idx)
         val_set = torch.utils.data.Subset(self, self.val_idx)
         return train_set, val_set
-    
-    
-    
+
     def create_stratified_index(self, val_ratio):
-        df = pd.DataFrame(None, columns = ['age', 'gender', 'path'])
+        df = pd.DataFrame(None, columns=['age', 'gender', 'path'])
         profiles = os.listdir(self.data_dir)
         for p in profiles:
             if p.startswith('.'):
@@ -383,13 +388,14 @@ class StratifiedMaskDataset(MaskBaseDataset):
             else:
                 new_row['age'] = 2
             new_row['path'] = p
-            df = df.append(new_row, ignore_index = True)
+            df = df.append(new_row, ignore_index=True)
 
-        classes = list(range(6)) # two gender * three age case
+        classes = list(range(6))  # two gender * three age case
         index = 0
-        for g in df.gender.unique(): # [0,1]
-            for a in df.age.unique(): # [0,1,2]
-                df.loc[(df.gender == g) & (df.age == a),'classes'] = classes[index]
+        for g in df.gender.unique():  # [0,1]
+            for a in df.age.unique():  # [0,1,2]
+                df.loc[(df.gender == g) & (df.age == a),
+                       'classes'] = classes[index]
                 index += 1
 
         train_idx = []
@@ -405,12 +411,13 @@ class StratifiedMaskDataset(MaskBaseDataset):
             val_idx += class_idx[split_idx:]
 
         val_paths = df.iloc[val_idx]['path']
-        profile_val = {p:1 for p in val_paths} # 1 for val
+        profile_val = {p: 1 for p in val_paths}  # 1 for val
         train_path = df.iloc[train_idx]['path']
 
         for p in train_path:
-            profile_val[p] = 0 # 0 for train
+            profile_val[p] = 0  # 0 for train
         self.class_profile = profile_val
+
 
 class MaskSplitByProfileDataset(MaskBaseDataset):
     """
@@ -438,7 +445,8 @@ class MaskSplitByProfileDataset(MaskBaseDataset):
 
     def setup(self):
         profiles = os.listdir(self.data_dir)
-        profiles = [profile for profile in profiles if not profile.startswith(".")]
+        profiles = [
+            profile for profile in profiles if not profile.startswith(".")]
         split_profiles = self._split_profile(profiles, self.val_ratio)
 
         cnt = 0
@@ -451,7 +459,8 @@ class MaskSplitByProfileDataset(MaskBaseDataset):
                     if _file_name not in self._file_names:  # "." 로 시작하는 파일 및 invalid 한 파일들은 무시합니다
                         continue
 
-                    img_path = os.path.join(self.data_dir, profile, file_name)  # (resized_data, 000004_male_Asian_54, mask1.jpg)
+                    # (resized_data, 000004_male_Asian_54, mask1.jpg)
+                    img_path = os.path.join(self.data_dir, profile, file_name)
                     mask_label = self._file_names[_file_name]
 
                     id, gender, race, age = profile.split("_")
@@ -474,8 +483,8 @@ class TestDataset(Dataset):
     def __init__(self, img_paths, resize, mean=(0.548, 0.504, 0.479), std=(0.237, 0.247, 0.246)):
         self.img_paths = img_paths
         self.transform = Compose([
-            Resize(resize[0],resize[1]),
-            Normalize(mean=mean, std=std,max_pixel_value=255.0, p=1.0),
+            Resize(resize[0], resize[1]),
+            Normalize(mean=mean, std=std, max_pixel_value=255.0, p=1.0),
             ToTensorV2(p=1.0),
         ], p=1.0)
 
@@ -490,118 +499,92 @@ class TestDataset(Dataset):
         return len(self.img_paths)
 
 
-def get_fixed_labeled_csv():
-    df = pd.read_csv("/opt/ml/input/data/train/train.csv")
+train_dir = '/opt/ml/input/data/train'
+image_dir = os.path.join(train_dir, 'images')
 
-    id_overlap_error = ["003397"]
-    gender_labeling_error = ['006359', '006360',
-                             '006361', '006362', '006363', '006364']
-    mask_labeling_error = ['000020', '004418', '005227']
 
-    id_max = int(max(df['id']))
-    id_new = id_max+1
+def get_label(img_paths):  # ['006578_male_Asian_19/normal.jpg, ...]'
+    labels = []
+    for path in img_paths:
+        _dir, img = path.split('/')
+        _id, gender, _, age = _dir.split('_')
+        age = int(age)
 
-    new_data_list = []
-
-    for idx in range(len(df)):
-        _path = df['path'].iloc[idx]  # 순서대로 가져와야 하기 때문에 iloc을 사용해 가져옵니다.
-        _gender = df['gender'].iloc[idx]
-        _age = df['age'].iloc[idx]
-        _id = df['id'].iloc[idx]
-
-        if _id in id_overlap_error:
-            _id = '%06d' % (id_new)
-            id_new += 1
+        gender_labeling_error = ['006359', '006360',
+                                 '006361', '006362', '006363', '006364']
+        mask_labeling_error = ['000020', '004418', '005227']
 
         if _id in gender_labeling_error:
-            if _gender == "male":
-                _gender = 'female'
-            else:
-                _gender = 'male'
+            if gender == 'male':
+                gender = 'female'
+            elif gender == 'female':
+                gender = 'male'
 
-        # 각 dir의 이미지들을 iterative 하게 가져옵니다.
-        for img_name in Path(f"/opt/ml/input/data/train/images/{_path}").iterdir():
-            img_stem = img_name.stem  # 해당 파일의 파일명만을 가져옵니다. 확장자 제외.
-            if not img_stem.startswith('._'):  # avoid hidden files
-                if _id in mask_labeling_error:
-                    if img_stem == "incorrect_mask":
-                        img_stem = 'normal'
-                    elif img_stem == 'normal':
-                        img_stem = 'incorrect_mask'
-                new_data_list.append(
-                    [_id, _age, _gender, img_stem, img_name.__str__()])
+        if _id in mask_labeling_error:
+            if img.startswith('incorrect_mask'):
+                img = 'normal'
+            elif img.startswith('normal'):
+                img = 'incorrect_mask'
 
-    df = pd.DataFrame(new_data_list)
-    df.columns = ['id', 'age', 'gender', 'stem', 'img_path']
+        label = 0
 
-    df['label'] = 0  # SET SCORE
-    # AGE
-    df['label'] += ((df['age'] >= 30) & (df['age'] < 60))*1
-    df['label'] += (df['age'] >= 60)*2
+        # Mask
+        if img.startswith('incorrect_mask'):
+            label += 6
+        elif img.startswith('normal'):
+            label += 12
 
-    # GENDER
-    df['label'] += (df['gender'] == 'female')*3
+        # Gender
+        if gender == 'female':
+            label += 3
 
-    # MASK wearing condition
-    df['label'] += (df['stem'].isin(['incorrect_mask']))*6
-    df['label'] += (df['stem'].isin(['normal']))*12
+        # Age
+        if age >= 30 and age < 60:
+            label += 1
+        elif age >= 60:
+            label += 2
+        labels.append(label)
 
-    df.to_csv('/opt/ml/code/labeled_data.csv', sep=',', na_rep='NaN')
+    return labels
 
 
-def get_cropped_and_fixed_images():
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    mtcnn = MTCNN(keep_all=True, device=device)
+def get_fixed_labeled_csv():
+    df = pd.read_csv(os.path.join(train_dir, 'train.csv'))
+    labels = []
+    image_folder_paths = [os.path.join(image_dir, path) for path in df.path]
 
-    os.makedirs('/opt/ml/input/data/train/new_imgs', exist_ok=True)
-    new_img_dir = '/opt/ml/input/data/train/new_imgs'
-    df = pd.read_csv("/opt/ml/code/labeled_data.csv")
+    img_paths = []
+    for people in image_folder_paths:
+        split_dir = people.split('/')
+        img_paths.append([os.path.join(split_dir[-1], file)
+                         for file in os.listdir(people) if not file.startswith("._")])
 
-    cnt = 0
+    lst = [['path', 'label']]
 
-    for index in tqdm(range(len(df))):
+    for i in range(len(df)):
+        for j in range(7):
+            labels = get_label(img_paths[i])
+            lst.append([img_paths[i][j], labels[j]])
 
-        path = df.iloc[index].img_path
-        img = cv2.imread(path)
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    with open('/opt/ml/code/labeled_data.csv', 'w') as file:
+        write = csv.writer(file)
+        write.writerows(lst)
+    print()
 
-        # mtcnn 적용
-        boxes, probs = mtcnn.detect(img)
 
-        if not isinstance(boxes, np.ndarray):
-            # 직접 crop
-            img = img[100:400, 50:350, :]
+def rand_bbox(size, lam):  # size : [Batch_size, Channel, Width, Height]
+    W = size[2]
+    H = size[3]
+    cut_rat = 1 - lam  # 패치 크기 비율
+    cut_h = np.int(H * cut_rat)
 
-        # boexes size 확인
-        else:
-            xmin = int(boxes[0, 0])-30
-            ymin = int(boxes[0, 1])-30
-            xmax = int(boxes[0, 2])+30
-            ymax = int(boxes[0, 3])+30
+    # 패치의 중앙 좌표 값 cx, cy
+    cy = np.random.randint(H)
 
-            if xmin < 0:
-                xmin = 0
-            if ymin < 0:
-                ymin = 0
-            if xmax > 384:
-                xmax = 384
-            if ymax > 512:
-                ymax = 512
+    # 패치 모서리 좌표 값
+    bbx1 = 0
+    bby1 = np.clip(cy - cut_h // 2, 0, H)
+    bbx2 = W
+    bby2 = np.clip(cy + cut_h // 2, 0, H)
 
-            img = img[ymin:ymax, xmin:xmax, :]
-
-            img_fixed_dir = '_'.join(
-                [df.iloc[index].id, df.iloc[index].gender, "Asian", str(df.iloc[index].age)])
-            
-            basename = os.path.basename(path)
-            ext = os.path.splitext(basename)[1].lower()
-
-        tmp = os.path.join(new_img_dir, img_fixed_dir)
-        cnt += 1
-
-        try:
-            os.mkdir(tmp)
-        except:
-            pass
-
-        plt.imsave(os.path.join(tmp, df.iloc[index].stem+ext), img)
+    return bbx1, bby1, bbx2, bby2
